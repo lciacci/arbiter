@@ -1,4 +1,4 @@
-# Where this is, 2026-07-28
+# Where this is, 2026-07-28 (updated after round 2)
 
 Written at a pause. Everything below is committed and pushed to
 `github.com/lciacci/arbiter`. Nothing is half-applied.
@@ -61,12 +61,35 @@ prompt patch in that same commit had silently matched nothing.
 That is the strongest single piece of evidence in this repo: same architecture,
 same model, same call count, plus a shell → qualitatively different findings.
 
+## Round 2: the security boundary
+
+`tools.py` was reviewed independently for the first time. arbiter found one RCE
+(`find -exec`); a workflow-backed review found **five more**, all confirmed by
+execution — `python3 -c` (a whole interpreter), a repo-supplied binary matched by
+basename, attached-value options escaping containment
+(`sort -o/etc/evil`, `git grep --open-files-in-pager=id`), `awk 'BEGIN{system()}'`,
+and `sed -i.bak` writing to the tree.
+
+It also caught that my first fix was the wrong *shape*. I patched `find -exec`
+with a flag denylist; seven of eight exploits still worked afterwards, because
+`-i.bak` is not `-i`. **A general-purpose Unix tool is a language, and you cannot
+enumerate the dangerous sentences in a language.**
+
+The command string is gone. The model now supplies typed parameters —
+`read_file`, `search`, `git_diff`, `git_log` — and the module builds the argv.
+No position where model input becomes a binary or a flag. Verified live: the
+rewrite works end-to-end and the model does use the typed tools.
+
+Standing after two rounds: **arbiter is a useful cheap pass that finds real
+critical bugs and is not sufficient on a security boundary.** Two independent
+looks produced six exploits between them, one apiece missed by the other. That
+is an argument for running both, not for picking one.
+
 ## Open, in priority order
 
-1. **Re-run the head-to-head.** Same diff, arbiter-with-verification vs
-   `/code-review`. The earlier comparison predates the tool, so the current
-   quality gap is unmeasured. This is the cheap experiment that settles whether
-   the tool changed the standing or just the anecdotes.
+1. **Done twice — see Round 2 above.** The remaining unmeasured thing is whether
+   the typed-tool rewrite changed finding quality, since every head-to-head so
+   far used the old shell tool or none.
 2. **Cost, first real measurement:** 2 shell files in tessera →
    **24 model calls, 185k in / 12k out, $0.73**. That is ~12 calls per file, not
    4 — verification triples the call count, since every turn resends the
