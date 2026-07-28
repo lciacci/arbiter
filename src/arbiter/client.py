@@ -32,6 +32,43 @@ MIN_PYTHON = (3, 13)
 _CLIENT: Anthropic | None = None
 _CLIENT_LOCK = threading.Lock()
 
+# Indicative list pricing, USD per million tokens. Not authoritative — it moves,
+# and it is wrong for cached or batched traffic. Good enough to answer "is this
+# run cents or dollars", which is the question that decides whether the tool is
+# worth running on every branch.
+PRICE_IN_PER_MTOK = 3.00
+PRICE_OUT_PER_MTOK = 15.00
+
+_USAGE = {"calls": 0, "input": 0, "output": 0}
+_USAGE_LOCK = threading.Lock()
+
+
+def _record(resp) -> None:
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return
+    with _USAGE_LOCK:
+        _USAGE["calls"] += 1
+        _USAGE["input"] += getattr(u, "input_tokens", 0) or 0
+        _USAGE["output"] += getattr(u, "output_tokens", 0) or 0
+
+
+def usage() -> dict:
+    """Tokens and estimated dollars for this process so far."""
+    with _USAGE_LOCK:
+        snap = dict(_USAGE)
+    snap["usd"] = round(
+        snap["input"] / 1_000_000 * PRICE_IN_PER_MTOK
+        + snap["output"] / 1_000_000 * PRICE_OUT_PER_MTOK,
+        4,
+    )
+    return snap
+
+
+def reset_usage() -> None:
+    with _USAGE_LOCK:
+        _USAGE.update(calls=0, input=0, output=0)
+
 
 class AgentError(RuntimeError):
     """A model call did not produce the structured output it was forced to."""
@@ -95,6 +132,7 @@ def call_tool_verified(
             tools=[RUN_TOOL, tool],
             messages=messages,
         )
+        _record(resp)
         if resp.stop_reason == "max_tokens":
             raise AgentError(
                 f"{tool['name']}: response hit max_tokens ({MAX_TOKENS}); "
@@ -152,6 +190,7 @@ def call_tool_verified(
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=messages,
     )
+    _record(resp)
     return _extract(resp, tool)
 
 
@@ -176,6 +215,7 @@ def call_tool(system: str, user_msg: str, tool: dict) -> dict:
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": user_msg}],
     )
+    _record(resp)
     return _extract(resp, tool)
 
 

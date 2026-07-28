@@ -17,7 +17,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from anthropic import AnthropicError
 
-from .client import AgentError, require_python
+from .client import AgentError, require_python, usage
 from .findings import merge, severity_rank
 from .lang import DEFAULT_EXTS
 from .reviewer import review
@@ -83,7 +83,7 @@ def exit_code(results: list[dict]) -> int:
     return 0
 
 
-def render(results: list[dict], base: str, head: str) -> str:
+def render(results: list[dict], base: str, head: str, spend: dict | None = None) -> str:
     blocking = [(r["path"], f) for r in results for f in r["blocking"]]
     advisory = [(r["path"], f) for r in results for f in r["advisory"]]
     dropped = sum(len(r["dropped"]) for r in results)
@@ -138,6 +138,15 @@ def render(results: list[dict], base: str, head: str) -> str:
             if f.get("rationale"):
                 out += ["", f"_{f['rationale']}_"]
             out += [""]
+
+    if spend:
+        out += [
+            "---",
+            "",
+            f"_{spend['calls']} model calls · {spend['input']:,} in / "
+            f"{spend['output']:,} out tokens · ~${spend['usd']:.2f} at list price._",
+            "",
+        ]
 
     return "\n".join(out)
 
@@ -214,7 +223,19 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    body = json.dumps(results, indent=2) if args.json else render(results, args.base, args.head)
+    spend = usage()
+    print(
+        f"\n{spend['calls']} model calls · "
+        f"{spend['input']:,} in / {spend['output']:,} out tokens · "
+        f"~${spend['usd']:.2f}",
+        file=sys.stderr,
+    )
+
+    body = (
+        json.dumps({"results": results, "usage": spend}, indent=2)
+        if args.json
+        else render(results, args.base, args.head, spend)
+    )
 
     if args.out:
         # Explicit encoding: findings are model output and routinely non-ASCII.
