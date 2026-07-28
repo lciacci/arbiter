@@ -11,6 +11,7 @@ hardcode a base_url.
 from __future__ import annotations
 
 import sys
+import threading
 
 from anthropic import Anthropic
 
@@ -23,6 +24,11 @@ MAX_TOKENS = 4096
 MIN_PYTHON = (3, 13)
 
 _CLIENT: Anthropic | None = None
+_CLIENT_LOCK = threading.Lock()
+
+
+class AgentError(RuntimeError):
+    """A model call did not produce the structured output it was forced to."""
 
 
 def require_python() -> None:
@@ -45,13 +51,28 @@ def require_python() -> None:
 
 def client() -> Anthropic:
     global _CLIENT
+    # Double-checked under a lock: cli.py runs units on a thread pool, so an
+    # unguarded check-and-set races and can build two clients.
     if _CLIENT is None:
-        _CLIENT = Anthropic()
+        with _CLIENT_LOCK:
+            if _CLIENT is None:
+                _CLIENT = Anthropic()
     return _CLIENT
 
 
 def call_tool(system: str, user_msg: str, tool: dict) -> dict:
-    """One forced-tool-use call. Returns the tool input dict, or {} if absent."""
+    """One forced-tool-use call. Returns the tool input dict.
+
+    Raises AgentError if the response carries no matching tool_use block.
+
+    It must raise rather than return {}. The call is made with
+    tool_choice={"type": "tool"}, so a missing block means something went
+    wrong — a refusal, a truncated response, an API-shape change. Returning
+    {} would flow through `.get("findings", [])` into an empty finding list
+    and read as "this file is clean". That is the same fail-open shape this
+    module's require_python() docstring warns about: an error a caller
+    mistakes for a pass.
+    """
     resp = client().messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
@@ -63,4 +84,8 @@ def call_tool(system: str, user_msg: str, tool: dict) -> dict:
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
             return dict(block.input)
-    return {}
+    stop = getattr(resp, "stop_reason", "unknown")
+    raise AgentError(
+        f"{tool['name']}: no tool_use block in response (stop_reason={stop}). "
+        "Refusing to report this as a clean review."
+    )

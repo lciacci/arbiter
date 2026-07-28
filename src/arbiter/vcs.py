@@ -59,16 +59,35 @@ def _range_args(repo: Path, base: str, head: str) -> list[str]:
     return [f"{base}...{head}"]
 
 
-def changed_files(repo: Path, base: str, head: str = "HEAD") -> list[tuple[str, str]]:
-    """[(status, path)] for files changed in head vs base. Status: A/M/D/R…"""
-    out = _git(repo, "diff", "--name-status", *_range_args(repo, base, head))
-    rows: list[tuple[str, str]] = []
+def changed_files(
+    repo: Path, base: str, head: str = "HEAD", rng: list[str] | None = None
+) -> list[tuple[str, str, str]]:
+    """[(status, path, old_path)] for files changed in head vs base.
+
+    Status is a single letter (A/M/D/R…). `old_path` is the path the file had
+    at `base` — the same as `path` except for renames and copies, where git
+    reports "R100\\told\\tnew" and the two differ. Callers need the old path to
+    fetch before-state content; using the new path against `base` silently
+    returns empty, which makes a renamed file look brand new.
+
+    `rng` lets a caller reuse an already-computed range instead of paying for
+    the two git subprocesses in _range_args again.
+    """
+    out = _git(repo, "diff", "--name-status", *(rng or _range_args(repo, base, head)))
+    return parse_name_status(out)
+
+
+def parse_name_status(out: str) -> list[tuple[str, str, str]]:
+    """Parse `git diff --name-status` output into (status, path, old_path)."""
+    rows: list[tuple[str, str, str]] = []
     for line in out.splitlines():
         parts = line.split("\t")
         if len(parts) < 2:
             continue
-        # Renames report as "R100\told\tnew" — take the destination path.
-        rows.append((parts[0][0], parts[-1]))
+        status = parts[0][0]
+        path = parts[-1]
+        old_path = parts[1] if status in ("R", "C") and len(parts) >= 3 else path
+        rows.append((status, path, old_path))
     return rows
 
 
@@ -103,7 +122,7 @@ def change_units(
     """Reviewable units for a ref range. Deletions and non-code files skipped."""
     rng = _range_args(repo, base, head)
     units: list[dict] = []
-    for status, path in changed_files(repo, base, head):
+    for status, path, old_path in changed_files(repo, base, head, rng):
         if status == "D" or not is_reviewable(path, exts):
             continue
         if not matches_any(path, paths or []):
@@ -115,7 +134,9 @@ def change_units(
             {
                 "path": path,
                 "status": status,
-                "before": "" if status == "A" else _content_at(repo, base, path),
+                # Read before-state at the path the file had *at base*, which
+                # differs from `path` for renames.
+                "before": "" if status == "A" else _content_at(repo, base, old_path),
                 "after": after,
                 "diff": _git(repo, "diff", *rng, "--", path),
             }

@@ -15,7 +15,9 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 
-from .client import require_python
+from anthropic import APIError
+
+from .client import AgentError, require_python
 from .findings import merge, severity_rank
 from .lang import DEFAULT_EXTS
 from .reviewer import review
@@ -52,13 +54,18 @@ def render(results: list[dict], base: str, head: str) -> str:
     advisory = [(r["path"], f) for r in results for f in r["advisory"]]
     dropped = sum(len(r["dropped"]) for r in results)
 
+    errored = [r for r in results if r.get("error")]
     out = [
         f"# arbiter — `{head}` vs `{base}`",
         "",
-        f"{len(results)} file(s) reviewed · "
+        f"{len(results) - len(errored)} file(s) reviewed · "
         f"**{len(blocking)} blocking** · {len(advisory)} advisory · {dropped} dropped by triage",
         "",
     ]
+    if errored:
+        out += [f"> **{len(errored)} file(s) failed to review** — not clean, unreviewed:", ""]
+        out += [f"> - `{r['path']}`: {r['error']}" for r in errored]
+        out += [""]
 
     for title, items, empty in (
         ("Blocking", blocking, "Nothing blocking. Both triage voices agreed to keep zero findings."),
@@ -117,10 +124,26 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Reviewing {len(units)} file(s) in {repo.name} ({args.head} vs {args.base})…", file=sys.stderr)
 
-    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        results = list(pool.map(lambda u: run_unit(u, skip_triage=args.no_triage), units))
+    def guarded(u: dict) -> dict:
+        """Run one unit, converting a failure into a recorded error.
 
+        A file that fails is reported as failed, never as clean. Keeping it
+        per-unit means one bad file doesn't discard the other ten results.
+        """
+        try:
+            return run_unit(u, skip_triage=args.no_triage)
+        except (AgentError, APIError) as e:
+            return {"path": u["path"], "status": u["status"], "error": str(e),
+                    "counts": {}, "blocking": [], "advisory": [], "dropped": []}
+
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        results = list(pool.map(guarded, units))
+
+    failed = [r for r in results if r.get("error")]
     for r in results:
+        if r.get("error"):
+            print(f"  {r['path']}: FAILED — {r['error']}", file=sys.stderr)
+            continue
         c = r["counts"]
         print(
             f"  {r['path']}: {c['first_pass']}+{c['second_pass']} → {c['merged']} merged → "
@@ -131,12 +154,17 @@ def main(argv: list[str] | None = None) -> int:
     body = json.dumps(results, indent=2) if args.json else render(results, args.base, args.head)
 
     if args.out:
-        Path(args.out).write_text(body)
+        # Explicit encoding: findings are model output and routinely non-ASCII.
+        Path(args.out).write_text(body, encoding="utf-8")
         print(f"Wrote {args.out}", file=sys.stderr)
     else:
         print(body)
 
-    # Exit 1 when something blocking was found, so this can gate a hook.
+    # Exit 1 on blocking findings so this can gate a hook; exit 2 when a file
+    # failed to review. An unreviewed file must never exit 0 — a gate reading
+    # that as a pass is the fail-open shape this tool exists to catch.
+    if failed:
+        return 2
     return 1 if any(r["blocking"] for r in results) else 0
 
 

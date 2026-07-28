@@ -31,7 +31,15 @@ def lang_fence(path: str) -> str:
 
 
 def _ext(path: str) -> str:
-    return path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    """Lowercased extension, or '' if there isn't one.
+
+    Operates on the basename so a dot in a directory (`my.dir/Makefile`) isn't
+    mistaken for an extension, and treats a leading-dot basename as
+    extensionless — `.gitignore` is a dotfile, not a file of type `gitignore`.
+    """
+    name = path.rsplit("/", 1)[-1]
+    stem, _, ext = name.rpartition(".")
+    return ext.lower() if stem else ""
 
 
 def is_reviewable(path: str, exts: frozenset[str] | set[str] = DEFAULT_EXTS) -> bool:

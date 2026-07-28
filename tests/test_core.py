@@ -144,3 +144,91 @@ from arbiter.vcs import matches_any  # noqa: E402
 )
 def test_matches_any(path, patterns, expected):
     assert matches_any(path, patterns) is expected
+
+
+# ---------- git name-status parsing ----------
+
+from arbiter.vcs import parse_name_status  # noqa: E402
+
+
+def test_parse_name_status_plain():
+    assert parse_name_status("M\tsrc/a.py\nA\tsrc/b.py") == [
+        ("M", "src/a.py", "src/a.py"),
+        ("A", "src/b.py", "src/b.py"),
+    ]
+
+
+def test_parse_name_status_rename_keeps_old_path():
+    """Regression: before-state must be read at the path the file had at base.
+
+    Using the destination path against base returns empty, so a renamed file
+    was reviewed as if newly written — with no before-state to compare to.
+    """
+    assert parse_name_status("R100\told/name.py\tnew/name.py") == [
+        ("R", "new/name.py", "old/name.py")
+    ]
+
+
+def test_parse_name_status_copy_keeps_source_path():
+    assert parse_name_status("C75\tsrc/orig.py\tsrc/copy.py") == [
+        ("C", "src/copy.py", "src/orig.py")
+    ]
+
+
+def test_parse_name_status_ignores_malformed_lines():
+    assert parse_name_status("garbage\n\nM\tok.py") == [("M", "ok.py", "ok.py")]
+
+
+# ---------- fail-loud contract ----------
+
+from arbiter.client import AgentError, call_tool  # noqa: E402
+
+
+class _FakeResp:
+    def __init__(self, content):
+        self.content = content
+        self.stop_reason = "end_turn"
+
+
+class _Block:
+    def __init__(self, type, name=None, input=None):
+        self.type, self.name, self.input = type, name, input
+
+
+def test_call_tool_raises_when_no_tool_use_block(monkeypatch):
+    """A missing tool_use block must raise, never read as 'no findings'.
+
+    tool_choice forces the tool, so its absence means something failed. If this
+    returned {}, every caller's .get("findings", []) would yield [] and the
+    file would be reported clean — an error a gate mistakes for a pass.
+    """
+    monkeypatch.setattr(
+        "arbiter.client.client",
+        lambda: type("C", (), {"messages": type("M", (), {
+            "create": staticmethod(lambda **kw: _FakeResp([_Block("text")]))
+        })()})(),
+    )
+    with pytest.raises(AgentError, match="no tool_use block"):
+        call_tool("sys", "msg", {"name": "report_findings"})
+
+
+def test_call_tool_returns_tool_input_when_present(monkeypatch):
+    monkeypatch.setattr(
+        "arbiter.client.client",
+        lambda: type("C", (), {"messages": type("M", (), {
+            "create": staticmethod(
+                lambda **kw: _FakeResp([_Block("tool_use", "report_findings", {"findings": [1]})])
+            )
+        })()})(),
+    )
+    assert call_tool("sys", "msg", {"name": "report_findings"}) == {"findings": [1]}
+
+
+# ---------- dotfiles ----------
+
+def test_dotfiles_are_extensionless():
+    """`.gitignore` is a dotfile, not a file of type 'gitignore'."""
+    assert lang_fence(".gitignore") == ""
+    assert not is_reviewable(".gitignore")
+    assert not is_reviewable("my.dir/Makefile")
+    assert is_reviewable("my.dir/run.sh")
