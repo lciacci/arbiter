@@ -67,9 +67,12 @@ same model, same call count, plus a shell → qualitatively different findings.
    `/code-review`. The earlier comparison predates the tool, so the current
    quality gap is unmeasured. This is the cheap experiment that settles whether
    the tool changed the standing or just the anecdotes.
-2. **Cost per run is now measured but not yet characterised.** The meter landed
-   this session; no run has been recorded with it. Get figures for a small diff,
-   a large one, and with/without `--no-verify`.
+2. **Cost, first real measurement:** 2 shell files in tessera →
+   **24 model calls, 185k in / 12k out, $0.73**. That is ~12 calls per file, not
+   4 — verification triples the call count, since every turn resends the
+   conversation. ~$0.37/file, so a 20-file branch is ~$7. Earlier input-only
+   estimates were 9x low. Still unmeasured: the same scope with `--no-verify`,
+   which is the number that says whether verification is worth 3x.
 3. **Tessera seams.** `docs/FINDINGS.md` exists and is empty — that is the S5
    feedback seam. And the canonical contract
    (`~/claude/tessera/docs/contracts/three-project-cohesion.md`) still gates S4
@@ -84,9 +87,28 @@ same model, same call count, plus a shell → qualitatively different findings.
    that owns it), but it is part of what would make this useful to someone other
    than its author.
 
+6. **Watch the triage split.** The tessera run produced 0 blocking, 8 advisory,
+   **0 dropped** — every finding got split votes. Either that file genuinely has
+   nothing blocking, or the new "read the rationale critically" instruction has
+   made the two voices systematically disagree, in which case the blocking tier
+   never populates and the two-tier output collapses. One run cannot tell them
+   apart. Check this before trusting a clean result.
+
+## First run against a foreign repo
+
+Done, and it found a real bug. In `tessera`'s
+`.claude/scripts/icpg-session-base.sh`, the jq-absent fallback matches
+`*'"source"'*'"startup"'*`, which does not require `startup` to be `source`'s
+own value. Verified: a payload of `{"source":"compact","event":"startup"}`
+resolves to `SOURCE=startup` and triggers the re-anchor the guard exists to
+prevent. Reachability depends on another field carrying the string, and the
+fallback only fires when jq is missing — but the logic is wrong regardless.
+
+That is the class tessera's own postmortem says it cannot self-detect, found in
+shell, on the first try, for $0.73.
+
 ## What has never been run
 
-- arbiter against a repo that is not itself. Tessera is the obvious first target
-  — ~60 shell files and a documented history of fail-open bugs in its own safety
-  machinery, which is exactly the class the reviewer prompt now targets.
 - arbiter as a git hook, despite the exit codes being designed for it.
+- A head-to-head since verification landed — the comparison that made arbiter
+  look weak predates the tool.

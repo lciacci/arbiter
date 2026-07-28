@@ -126,9 +126,11 @@ Every run reports its own usage, to stderr and at the foot of the report:
 <N> model calls · <in> in / <out> out tokens · ~$<estimate>
 ```
 
-No representative figure is quoted here on purpose — it depends entirely on how
-much code you point it at, and a number invented for a README is worse than none.
-Run it on your own diff and read the line.
+One measured data point: **2 shell files, 24 model calls, 185k in / 12k out,
+$0.73** — roughly $0.37 per file, so a 20-file branch lands near $7. Verification
+is most of that; it triples the call count because every turn resends the
+conversation. Your figure depends entirely on how much code you point it at, so
+run it and read the line rather than trusting this one.
 
 Pricing is indicative list price (`PRICE_IN_PER_MTOK` in `client.py`) and will
 drift; treat it as "cents or dollars", not an invoice. Drivers, in order:
