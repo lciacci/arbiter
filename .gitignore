@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDE
+.vscode/settings.json
+.idea/
+
+# Tessera runtime
+.tessera/logs/*
+!.tessera/logs/README.md
+# .tessera/config.yml is COMMITTED, deliberately. It carries `test:` — the command an
+# agent must never have to guess. A test command that vanishes on a fresh clone is useless
+# to the unsupervised agent it exists for. Keep secrets out of it, not the file out of git.
+.mnemos/
+.icpg/
+.claude/.tdd-iteration-count
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python (tooling)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- add your stack below (build artifacts, deps, lockfiles you don't track) ---

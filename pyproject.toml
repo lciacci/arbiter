@@ -1,0 +1,25 @@
+[project]
+name = "arbiter"
+version = "0.1.0"
+description = "Adversarial second-opinion code review: reviewer, independent second pass, mutual triage."
+readme = "README.md"
+authors = [
+    { name = "lciacci", email = "lorenzo@lorenzociacci.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=0.100.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+arbiter = "arbiter.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.28,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
