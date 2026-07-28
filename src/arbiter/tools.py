@@ -1,200 +1,227 @@
-"""A read-only shell tool the review agents can call to check their claims.
+"""Typed, read-only inspection tools the review agents can call.
 
-Why this exists: a workflow-backed review found six defects arbiter had twice
-declared clean, and every one was findable within a single file. The gap was
-not context — it was that its agents could only *reason* about what git does,
-while the agents that found them could *run git and look*. Reading Python and
-knowing that pathspec filtering defeats rename detection are different skills;
-only one of them is available to a model staring at a text blob.
+Why these exist: agents that can only reason about what git does miss defects
+that agents which *run git and look* catch. Verification is worth having.
 
-## Security
+## Why they are typed rather than a shell command
 
-The model is choosing these commands after reading a diff, and a diff can
-contain text written by someone else. That makes this a prompt-injection
-surface: hostile content in a reviewed file could try to talk the reviewer into
-running something. The mitigations, in order of how much they carry:
+The first version of this module took a command string, shlex-split it, and
+allowed it if argv[0] was on a list of "read-only" binaries. An independent
+review found five separate ways through it, all confirmed by execution:
 
-- **Allowlist, not denylist.** Only the binaries in ALLOWED run, and `git` is
-  further restricted to read-only subcommands. Anything unlisted is refused.
-- **No shell.** Commands are shlex-split and passed as argv. There is no shell,
-  so `;`, `|`, `>`, backticks and `$(…)` are inert argument text.
-- **Confined to the repo.** cwd is the repo root; arguments that escape it via
-  `..` or an absolute path are refused.
-- **Bounded.** Wall-clock timeout and truncated output, so a command cannot
-  hang or flood the context.
+- `python3 -c '<anything>'` — the allowlist admitted a full interpreter, which
+  makes every other restriction decorative.
+- `./scripts/cat foo` — only the *basename* was matched against the allowlist
+  and argv[0] was never path-checked, so a binary shipped in the branch under
+  review would run.
+- `sort -o/etc/evil`, `git diff --output=/etc/evil`,
+  `git grep --open-files-in-pager=id` — every argument starting with `-` was
+  skipped by the containment check, so attached-value options escaped it.
+- `find . -exec sh -c id \;` and `awk 'BEGIN{system("...")}'` — nothing looked
+  past argv[0] for an executable, so a shell ran as an argument.
+- `sed -i.bak s/a/b/ file` — a write, from a tool documented as read-only.
+  Denying the exact token `-i` did not stop `-i.bak`.
 
-This is not a sandbox. It is a narrow allowlist that makes the obvious attacks
-fail. Reviewing genuinely untrusted code — a PR from a stranger — warrants a
-container, and `--no-verify` turns the tool off entirely.
+Each individual hole was patchable and patching them was the wrong move: a
+general-purpose Unix tool is a language, and enumerating the dangerous
+sentences in a language does not work. The model now supplies *parameters*, not
+argv. Every command below is a fixed argument vector with model input confined
+to positions that cannot become flags.
+
+## What that buys
+
+No shell, no interpreter, no writes, no network, and no argv parsing to defeat.
+Paths and refs are validated; search patterns go through `-e` so they cannot be
+read as options.
+
+Everything reads through git at a pinned ref rather than off disk, which also
+fixes a subtler bug: the reviewer is shown before/after content from the base
+and head refs, but the old tools read the live working tree. A finder could
+confirm a claim against code that was not the code under review.
+
+Still not a sandbox. `--no-verify` disables it; reviewing genuinely untrusted
+code warrants a container regardless.
 """
 
 from __future__ import annotations
 
-import shlex
+import re
 import subprocess
 from pathlib import Path, PurePosixPath
 
 TIMEOUT_SECONDS = 20
 MAX_OUTPUT_CHARS = 6000
+MAX_LOG_ENTRIES = 50
 
-# Read-only inspection only. Nothing that writes, networks, or installs.
-#
-# "Read-only binary" is not a property of the binary alone. Several of these
-# will happily execute another program, or delete files, if asked the right way:
-# `find -exec` is a full shell escape, `awk -f` and `sed -f` run a script file
-# out of the repository under review. Membership here is necessary, not
-# sufficient — DANGEROUS_FLAGS carries the rest.
-ALLOWED = frozenset({
-    "git", "grep", "rg", "ls", "cat", "head", "tail", "wc", "find", "file",
-    "python3", "sed", "awk", "sort", "uniq", "diff", "basename", "dirname",
-})
+# Refs may contain letters, digits and the punctuation git uses for revision
+# syntax. A leading dash is rejected separately so a ref can never be read as an
+# option, and ".." is rejected so a ref cannot smuggle a parent-directory path.
+_REF_RE = re.compile(r"\A[A-Za-z0-9._/~^{}@-]{1,200}\Z")
 
-# Per-binary flags that break the read-only guarantee. Matched against the exact
-# argument and against its `--flag=value` form.
-DANGEROUS_FLAGS = {
-    # -exec/-ok run an arbitrary command; the rest write or delete.
-    "find": {"-exec", "-execdir", "-ok", "-okdir", "-delete",
-             "-fprint", "-fprint0", "-fprintf", "-fls"},
-    # -f/--file loads a program from a file — i.e. executes code under review.
-    "awk": {"-f", "--file", "--source", "--exec"},
-    "sed": {"-f", "--file", "-i", "--in-place", "-s"},
-    # grep/rg can write with these; rg can also execute a preprocessor.
-    "rg": {"--pre", "--hostname-bin", "--generate"},
-    "grep": {"-f", "--file"},
-}
 
-# git is the whole point of this tool and also the easiest way to mutate a
-# repo, so its subcommands are allowlisted separately.
-GIT_READONLY = frozenset({
-    "show", "diff", "log", "cat-file", "ls-files", "ls-tree", "rev-parse",
-    "merge-base", "blame", "grep", "status", "describe", "shortlog", "name-rev",
-})
+class ToolError(ValueError):
+    """A tool call whose parameters are not acceptable."""
 
-RUN_TOOL = {
-    "name": "run_command",
-    "description": (
-        "Run a read-only shell command inside the repository to check a claim before "
-        "reporting it. Use this to verify what code actually does rather than inferring "
-        "it: run git to see how a diff is really produced, grep for a symbol's other "
-        "uses, or `python3 -c` to evaluate an expression. Prefer checking over guessing. "
-        "Read-only commands only; writes, installs and network access are refused."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "command": {
-                "type": "string",
-                "description": "The command line, e.g. \"git log --oneline -5\". No shell syntax.",
+
+TOOLS = [
+    {
+        "name": "read_file",
+        "description": (
+            "Read a file as it exists at a git ref. Use this to see code the diff "
+            "does not show. Returns the file with line numbers."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Repo-relative path."},
+                "ref": {"type": "string", "description": "Git ref; defaults to the head under review."},
+                "why": {"type": "string", "description": "What claim this checks."},
             },
-            "why": {
-                "type": "string",
-                "description": "What claim this checks, in one clause.",
-            },
+            "required": ["path", "why"],
         },
-        "required": ["command", "why"],
     },
-}
+    {
+        "name": "search",
+        "description": (
+            "Search the repository at a git ref for a literal pattern (fixed string, "
+            "not a regex). Use this to find a symbol's other uses or confirm something "
+            "does not exist."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Literal text to find."},
+                "path": {"type": "string", "description": "Optional path to restrict the search to."},
+                "ref": {"type": "string", "description": "Git ref; defaults to the head under review."},
+                "why": {"type": "string", "description": "What claim this checks."},
+            },
+            "required": ["pattern", "why"],
+        },
+    },
+    {
+        "name": "git_diff",
+        "description": (
+            "Show the diff between two refs, optionally for one path. Use this to see "
+            "what git actually produces rather than inferring it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "base": {"type": "string"},
+                "head": {"type": "string"},
+                "path": {"type": "string", "description": "Optional path to restrict the diff to."},
+                "why": {"type": "string", "description": "What claim this checks."},
+            },
+            "required": ["base", "head", "why"],
+        },
+    },
+    {
+        "name": "git_log",
+        "description": "Recent commits, optionally for one path.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "limit": {"type": "integer", "description": f"1-{MAX_LOG_ENTRIES}."},
+                "why": {"type": "string", "description": "What claim this checks."},
+            },
+            "required": ["why"],
+        },
+    },
+]
+
+TOOL_NAMES = frozenset(t["name"] for t in TOOLS)
 
 
-def run_command(repo: Path, command: str) -> str:
-    """Execute an allowlisted read-only command. Returns output or a refusal."""
+def dispatch(repo: Path, name: str, params: dict, default_ref: str) -> str:
+    """Run one tool call. Returns output, or a REFUSED/ERROR line."""
     try:
-        argv = shlex.split(command)
-    except ValueError as e:
-        return f"REFUSED: could not parse command ({e})"
-    if not argv:
-        return "REFUSED: empty command"
+        if name == "read_file":
+            return _read_file(repo, _path(params.get("path")),
+                              _ref(params.get("ref") or default_ref))
+        if name == "search":
+            return _search(repo, str(params.get("pattern", "")),
+                           _opt_path(params.get("path")),
+                           _ref(params.get("ref") or default_ref))
+        if name == "git_diff":
+            return _git(repo, "diff", _ref(params.get("base")) + "..." + _ref(params.get("head")),
+                        *(["--", _path(params["path"])] if params.get("path") else []))
+        if name == "git_log":
+            n = max(1, min(int(params.get("limit") or 20), MAX_LOG_ENTRIES))
+            return _git(repo, "log", "--oneline", f"-{n}",
+                        *(["--", _path(params["path"])] if params.get("path") else []))
+    except ToolError as e:
+        return f"REFUSED: {e}"
+    except (ValueError, TypeError) as e:
+        return f"REFUSED: bad parameters ({e})"
+    return f"REFUSED: no tool named {name!r}"
 
-    verdict = _refuse(repo, argv)
-    if verdict:
-        return f"REFUSED: {verdict}"
 
+# ---------- parameter validation ----------
+
+def _ref(value: object) -> str:
+    ref = str(value or "").strip()
+    if not ref:
+        raise ToolError("empty ref")
+    if ref.startswith("-"):
+        raise ToolError(f"ref {ref!r} may not start with '-'")
+    if ".." in ref or not _REF_RE.match(ref):
+        raise ToolError(f"ref {ref!r} is not a plain revision")
+    return ref
+
+
+def _path(value: object) -> str:
+    path = str(value or "").strip()
+    if not path:
+        raise ToolError("empty path")
+    if path.startswith("-"):
+        raise ToolError(f"path {path!r} may not start with '-'")
+    if PurePosixPath(path).is_absolute() or ".." in PurePosixPath(path).parts:
+        raise ToolError(f"path {path!r} must be repo-relative and may not contain '..'")
+    return path
+
+
+def _opt_path(value: object) -> str | None:
+    return _path(value) if value else None
+
+
+# ---------- fixed-shape commands ----------
+
+def _git(repo: Path, *args: str) -> str:
+    """Run git with an argument vector this module built. Never model-supplied argv.
+
+    Only the validated parameter values reach this, always in positions where a
+    leading dash has already been rejected, so no argument can turn into a flag.
+    """
     try:
         proc = subprocess.run(
-            argv, cwd=repo, capture_output=True, text=True,
+            ["git", *args], cwd=repo, capture_output=True, text=True,
             timeout=TIMEOUT_SECONDS, shell=False,
         )
     except subprocess.TimeoutExpired:
         return f"REFUSED: exceeded {TIMEOUT_SECONDS}s"
     except (OSError, ValueError) as e:
         return f"REFUSED: {e}"
-
     out = (proc.stdout or "") + (proc.stderr or "")
     if len(out) > MAX_OUTPUT_CHARS:
         out = out[:MAX_OUTPUT_CHARS] + f"\n… [truncated at {MAX_OUTPUT_CHARS} chars]"
     return out or f"(no output, exit {proc.returncode})"
 
 
-def _refuse(repo: Path, argv: list[str]) -> str | None:
-    """Reason to refuse, or None to allow."""
-    binary = Path(argv[0]).name
-    if binary not in ALLOWED:
-        return f"{binary!r} is not in the read-only allowlist"
-    if binary == "git" and (bad := _refuse_git(argv)):
-        return bad
-    if bad := _refuse_dangerous_flags(binary, argv):
-        return bad
-    if binary == "python3" and "-c" not in argv:
-        return "python3 is allowed only with an inline script (-c)"
-    for arg in argv[1:]:
-        if bad := _escapes_repo(repo, arg):
-            return bad
-    return None
+def _read_file(repo: Path, path: str, ref: str) -> str:
+    body = _git(repo, "show", f"{ref}:{path}")
+    if body.startswith("REFUSED:"):
+        return body
+    lines = body.splitlines()
+    return "\n".join(f"{i:5}  {line}" for i, line in enumerate(lines, 1))
 
 
-def _refuse_dangerous_flags(binary: str, argv: list[str]) -> str | None:
-    """Refuse per-binary flags that break the read-only guarantee.
-
-    Being on ALLOWED only says the binary is normally an inspection tool. It
-    says nothing about the arguments. `find . -exec sh -c '…' \\;` passed every
-    other check in this module and achieved arbitrary code execution: argv[0]
-    was `find`, and `sh` was just another argument nothing looked at.
-    """
-    bad = DANGEROUS_FLAGS.get(binary)
-    if not bad:
-        return None
-    for arg in argv[1:]:
-        head = arg.split("=", 1)[0]
-        if arg in bad or head in bad:
-            return f"{binary} {arg!r} can execute or write; only inspection is allowed"
-    return None
-
-
-def _refuse_git(argv: list[str]) -> str | None:
-    """git must be `git <read-only-subcommand> …` with no global options.
-
-    Skipping leading flags to find the subcommand is not safe: git's global
-    options can execute arbitrary code before the subcommand ever runs.
-    `--exec-path=DIR` makes git load its sub-programs from DIR, and
-    `-c alias.x=!sh` or `-c core.pager=…` inject commands via config. Both
-    would sail past a check that only looks at the first non-flag token.
-    Since cwd is already the repo, no global option is worth that risk.
-    """
-    if len(argv) < 2:
-        return "git needs a subcommand"
-    sub = argv[1]
-    if sub.startswith("-"):
-        return f"git global option {sub!r} is not allowed; use `git <subcommand> …`"
-    if sub not in GIT_READONLY:
-        return f"git subcommand {sub!r} is not read-only"
-    return None
-
-
-def _escapes_repo(repo: Path, arg: str) -> str | None:
-    if arg.startswith("-"):
-        return None
-
-    # A git pathspec can carry the path after a ref: `HEAD~1:../etc/passwd`.
-    # Splitting the raw string on "/" leaves "HEAD~1:.." as one token, so a
-    # single leading `..` never appeared as its own element and slipped the
-    # check. Compare path *components* of the portion after the ref instead.
-    candidate = arg.split(":", 1)[1] if ":" in arg else arg
-    if ".." in PurePosixPath(candidate).parts:
-        return f"path {arg!r} escapes the repository"
-
-    if Path(candidate).is_absolute():
-        try:
-            Path(candidate).resolve().relative_to(repo.resolve())
-        except ValueError:
-            return f"absolute path {arg!r} is outside the repository"
-    return None
+def _search(repo: Path, pattern: str, path: str | None, ref: str) -> str:
+    if not pattern:
+        raise ToolError("empty pattern")
+    # -F fixed-string and -e both matter: -e keeps a pattern beginning with '-'
+    # from being read as an option, and -F stops it being a regex.
+    args = ["grep", "-n", "-F", "-e", pattern, ref]
+    if path:
+        args += ["--", path]
+    return _git(repo, *args)

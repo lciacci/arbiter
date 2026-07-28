@@ -59,7 +59,7 @@ def review(unit: dict, repo: Path | None = None) -> list[dict]:
     With `repo`, the agent may run read-only commands to check a claim before
     reporting it; without, it is a single forced call.
     """
-    raw = call_tool_verified(SYSTEM, _user_message(unit), TOOL, repo)
+    raw = call_tool_verified(SYSTEM, _user_message(unit), TOOL, repo, ref=unit.get("ref", "HEAD"))
     return validate(raw.get("findings", []))
 
 

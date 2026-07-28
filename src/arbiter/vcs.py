@@ -153,6 +153,11 @@ def change_units(
             {
                 "path": path,
                 "status": status,
+                # The ref the after-state came from. Verification reads through
+                # git at this ref rather than off disk, so a finder cannot
+                # confirm a claim against a working tree that differs from the
+                # code under review.
+                "ref": head,
                 "before": before,
                 "after": after,
                 "diff": _git(repo, "diff", *rng, "--", *pathspec),

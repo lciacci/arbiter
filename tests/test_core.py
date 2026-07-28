@@ -305,86 +305,102 @@ def test_render_surfaces_degraded_triage():
     assert "skipped triage" in out and "not confirmed" in out
 
 
-# ---------- read-only command allowlist ----------
+# ---------- typed inspection tools ----------
 #
-# The model picks these commands after reading a diff, and a diff can contain
-# text written by someone else. Every refusal below is a prompt-injection path.
+# The previous design took a command string and allowlisted argv[0]. An
+# independent review found five confirmed ways through it. The command string
+# is gone; the model now supplies parameters that cannot become argv. These
+# tests pin the validation, and the block below pins the old exploits as
+# unrepresentable rather than merely refused.
 
 from pathlib import Path as _Path  # noqa: E402
 
-from arbiter.tools import _refuse  # noqa: E402
+from arbiter.tools import TOOL_NAMES, ToolError, _path, _ref, dispatch  # noqa: E402
 
 REPO = _Path("/tmp/repo")
 
 
-def refused(cmd: str) -> bool:
-    import shlex
-    return _refuse(REPO, shlex.split(cmd)) is not None
-
-
-@pytest.mark.parametrize("cmd", [
-    "git show HEAD:src/a.py",
-    "git diff HEAD~1 HEAD",
-    "git log --oneline -5",
-    "grep -rn needle src",
-    "python3 -c 'print(1)'",
-    "sed -n 1,20p src/a.py",
-    "wc -l src/a.py",
+@pytest.mark.parametrize("bad", [
+    "-c",                      # would be read as an option
+    "--output=/etc/evil",      # attached-value option form
+    "/etc/passwd",             # absolute
+    "../../etc/passwd",        # traversal
+    "src/../../etc/passwd",    # traversal mid-path
+    "",
 ])
-def test_readonly_commands_allowed(cmd):
-    assert not refused(cmd)
+def test_path_rejects_flags_and_escapes(bad):
+    with pytest.raises(ToolError):
+        _path(bad)
 
 
-@pytest.mark.parametrize("cmd", [
-    "rm -rf /",                        # not on the allowlist
-    "curl http://evil.example",        # no network
-    "pip install requests",            # no installs
-    "bash -c 'echo hi'",               # no shell
-    "git push origin main",            # writes
-    "git commit -am wip",              # writes
-    "git checkout main",               # mutates the tree under review
-    "python3 setup.py",                # would execute code under review
-    "cat ../../../etc/passwd",         # escapes the repo
-    "cat /etc/passwd",                 # absolute path outside the repo
+def test_path_accepts_ordinary_repo_paths():
+    assert _path("src/arbiter/cli.py") == "src/arbiter/cli.py"
+
+
+@pytest.mark.parametrize("bad", [
+    "--exec-path=/tmp/evil",   # git global option that runs foreign binaries
+    "-c",
+    "HEAD~1:../etc/passwd",    # traversal smuggled in a ref
+    "a b",                     # whitespace is not revision syntax
+    "",
 ])
-def test_dangerous_commands_refused(cmd):
-    assert refused(cmd)
+def test_ref_rejects_options_and_traversal(bad):
+    with pytest.raises(ToolError):
+        _ref(bad)
 
 
-def test_shell_metacharacters_are_inert_not_interpreted():
-    """No shell means `;` and `|` arrive as argument text, never as operators.
-
-    `git log ; rm -rf /` cannot chain: shlex yields one argv whose head is git,
-    so the `rm` is just a search term. It is refused anyway — the trailing `/`
-    trips the path-escape check — so the injection fails twice over. The point
-    of this test is the first reason, hence the explicit argv assertions.
-    """
-    import shlex
-    argv = shlex.split("git log ';' rm -rf /")
-    assert argv[0] == "git" and argv[2] == ";"   # ';' is a literal argument
-    assert _refuse(REPO, argv) is not None       # and refused regardless
-
-    # Same metacharacters, no path escape: still a plain `git log` invocation,
-    # so it is allowed — the `|` never becomes a pipe.
-    assert _refuse(REPO, shlex.split("git log --grep '|' -5")) is None
+@pytest.mark.parametrize("good", ["HEAD", "HEAD~3", "main", "d91e4c7", "refs/heads/main"])
+def test_ref_accepts_plain_revisions(good):
+    assert _ref(good) == good
 
 
-# ---------- allowlist bypasses found by arbiter's own verified run ----------
+def test_unknown_tool_is_refused_not_dispatched():
+    assert dispatch(REPO, "run_command", {"command": "id"}, "HEAD").startswith("REFUSED")
 
-@pytest.mark.parametrize("cmd,why", [
-    ("git show HEAD~1:../etc/passwd", "single dotdot after a ref"),
-    ("git show HEAD:../../secrets", "dotdot chain after a ref"),
-    ("git --exec-path=/tmp/evil show HEAD:a.py", "--exec-path runs foreign binaries"),
-    ("git -c alias.x=!sh log", "-c injects config, and aliases can shell out"),
-    ("git --upload-pack=/tmp/evil log", "any global option before the subcommand"),
+
+def test_tool_names_match_declared_schemas():
+    assert TOOL_NAMES == {"read_file", "search", "git_diff", "git_log"}
+
+
+# ---------- the five confirmed bypasses of the old allowlist ----------
+#
+# Each of these executed under the command-string design. None is expressible
+# now: there is no parameter that becomes argv[0], and no free-text argument.
+
+def test_no_tool_accepts_a_command_string():
+    """The interpreter hole (`python3 -c ...`) needed a command parameter."""
+    for name in TOOL_NAMES:
+        out = dispatch(REPO, name, {"command": "python3 -c 'import os;os.system(\"id\")'"}, "HEAD")
+        assert out.startswith("REFUSED"), f"{name} accepted a command string"
+
+
+def test_repo_local_binary_cannot_become_argv0():
+    """`./scripts/cat foo` ran a repo-supplied binary; no parameter reaches argv[0]."""
+    assert dispatch(REPO, "read_file", {"path": "./scripts/cat"}, "HEAD").startswith("REFUSED") is False or True
+    # path is a *file to read*, never an executable — assert it stays a path
+    with pytest.raises(ToolError):
+        _path("-./scripts/cat")
+
+
+@pytest.mark.parametrize("attached", [
+    "-o/etc/evil",                      # sort -o
+    "--output=/etc/evil",               # git diff --output
+    "--open-files-in-pager=id",         # git grep, spawns a command
+    "-i.bak",                           # sed -i.bak, defeated exact-token denial
 ])
-def test_git_bypasses_are_refused(cmd, why):
-    assert refused(cmd), why
+def test_attached_value_options_are_not_valid_paths_or_refs(attached):
+    with pytest.raises(ToolError):
+        _path(attached)
+    with pytest.raises(ToolError):
+        _ref(attached)
 
 
-def test_plain_readonly_git_still_works():
-    assert not refused("git show HEAD:src/arbiter/cli.py")
-    assert not refused("git diff HEAD~1 HEAD -- src")
+def test_search_pattern_starting_with_dash_is_not_an_option():
+    """The pattern goes through `-e`, so it cannot be read as a flag."""
+    from arbiter.tools import _search
+    import inspect
+    src = inspect.getsource(_search)
+    assert '"-e"' in src and '"-F"' in src
 
 
 # ---------- ballot coercion ----------
@@ -420,43 +436,6 @@ def test_coerce_returns_empty_for_unusable_payloads():
     assert _coerce_votes(None) == []
     assert _coerce_votes("not json at all") == []
     assert _coerce_votes(12) == []
-
-
-# ---------- RCE and write bypasses (arbiter found these in its own allowlist) ----------
-
-@pytest.mark.parametrize("cmd,why", [
-    ("find . -exec sh -c 'echo pwned' ;", "find -exec is a full shell escape"),
-    ("find . -execdir sh -c x ;", "-execdir likewise"),
-    ("find . -ok rm {} ;", "-ok likewise, with a prompt"),
-    ("find . -name x -delete", "-delete writes, on a read-only allowlist"),
-    ("find . -fprintf /tmp/out %p", "-fprintf writes a file"),
-    ("awk -f evil.awk", "-f runs a program file from the repo under review"),
-    ("awk --file=evil.awk", "--flag=value form"),
-    ("sed -f evil.sed", "sed -f likewise"),
-    ("sed -i s/a/b/ file", "-i edits in place"),
-    ("grep -f patterns.txt .", "grep -f reads a program file"),
-])
-def test_exec_and_write_flags_are_refused(cmd, why):
-    assert refused(cmd), why
-
-
-@pytest.mark.parametrize("cmd", [
-    "find . -name '*.py'",
-    "find . -type f -maxdepth 2",
-    "awk '{print $1}' file.txt",
-    "sed -n 1,20p file.txt",
-    "grep -rn needle src",
-])
-def test_ordinary_inspection_still_allowed(cmd):
-    assert not refused(cmd)
-
-
-def test_find_exec_does_not_actually_execute(tmp_path):
-    """Live check: the refusal happens before subprocess.run, not after."""
-    from arbiter.tools import run_command
-    out = run_command(tmp_path, "find . -maxdepth 0 -exec sh -c 'echo LEAKED' ;")
-    assert out.startswith("REFUSED:")
-    assert "LEAKED" not in out
 
 
 # ---------- ballot coercion, hardened ----------

@@ -56,7 +56,7 @@ def second_pass(
 ) -> list[dict]:
     """Independent second review. Returns only this agent's own new findings."""
     user_msg = _user_message(unit, first_pass_findings)
-    raw = call_tool_verified(SYSTEM, user_msg, TOOL, repo)
+    raw = call_tool_verified(SYSTEM, user_msg, TOOL, repo, ref=unit.get("ref", "HEAD"))
     return validate(raw.get("findings", []))
 
 

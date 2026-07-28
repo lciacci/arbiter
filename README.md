@@ -92,13 +92,23 @@ symbol's other uses, evaluate an expression. This is on by default and it is the
 single change that most improved finding quality: on its first run with the tool
 enabled it found two allowlist bypasses in its own newly-written security code.
 
-The model chooses those commands after reading a diff, and a diff can contain
-text written by someone else, so it is a prompt-injection surface. It is an
-allowlist, not a sandbox: allowlisted binaries only, `git` restricted to
-read-only subcommands with no global options (`--exec-path` and `-c` are code
-execution), argv passed without a shell so `;` and `|` are inert, paths confined
-to the repo, `python3`/`sed`/`awk` limited to inline scripts so code under review
-is never executed, plus a timeout and output cap. See `src/arbiter/tools.py`.
+The model chooses what to inspect after reading a diff, and a diff can contain
+text written by someone else, so this is a prompt-injection surface.
+
+The tools are **typed, not a shell**. An earlier version took a command string
+and allowlisted `argv[0]`; an independent review found five confirmed ways
+through it, including `python3 -c` (a whole interpreter), a repo-supplied binary
+whose basename matched the allowlist, and `sed -i.bak` writing to the tree.
+Enumerating dangerous invocations of general-purpose Unix tools does not work.
+
+Now the model supplies parameters — `read_file(path, ref)`, `search(pattern,
+path, ref)`, `git_diff(base, head, path)`, `git_log(path, limit)` — and the
+argument vector is built here. There is no position where model input becomes a
+binary or a flag: paths and refs are rejected if they are absolute, contain
+`..`, or begin with `-`, and search patterns go through `-e` so they cannot be
+read as options. Everything reads through git at a pinned ref, so a finder
+cannot confirm a claim against a working tree that differs from the code under
+review. See `src/arbiter/tools.py`.
 
 **Reviewing a PR from someone you do not trust: use `--no-verify`, or run it in
 a container.**

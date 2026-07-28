@@ -16,7 +16,7 @@ from pathlib import Path
 
 from anthropic import Anthropic
 
-from .tools import RUN_TOOL, run_command
+from .tools import TOOL_NAMES, TOOLS, dispatch
 
 MODEL = "claude-sonnet-4-6"
 
@@ -109,6 +109,7 @@ def call_tool_verified(
     tool: dict,
     repo: Path | None,
     max_turns: int = MAX_VERIFY_TURNS,
+    ref: str = "HEAD",
 ) -> dict:
     """Like call_tool, but the model may run read-only commands first.
 
@@ -129,15 +130,16 @@ def call_tool_verified(
             model=MODEL,
             max_tokens=MAX_TOKENS,
             system=system,
-            tools=[RUN_TOOL, tool],
+            tools=[*TOOLS, tool],
             messages=messages,
         )
         _record(resp)
         if resp.stop_reason == "max_tokens":
-            raise AgentError(
-                f"{tool['name']}: response hit max_tokens ({MAX_TOKENS}); "
-                "its tool input is truncated. Refusing to report a partial review."
-            )
+            # Only fatal on a turn that was meant to produce the report. An
+            # exploration turn running long is recoverable: stop exploring and
+            # force the report with what has been established, rather than
+            # failing the whole file over a truncated intermediate step.
+            break
 
         calls = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
         report = next((b for b in calls if b.name == tool["name"]), None)
@@ -159,8 +161,8 @@ def call_tool_verified(
                     "type": "tool_result",
                     "tool_use_id": b.id,
                     "content": (
-                        run_command(repo, b.input.get("command", ""))
-                        if b.name == RUN_TOOL["name"]
+                        dispatch(repo, b.name, dict(b.input), ref)
+                        if b.name in TOOL_NAMES
                         else f"REFUSED: no tool named {b.name!r} is available"
                     ),
                 }
@@ -186,7 +188,10 @@ def call_tool_verified(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         system=system,
-        tools=[tool],
+        # The transcript may reference the inspection tools, so they stay
+        # declared even though tool_choice forces the report. Omitting them
+        # leaves tool_use blocks pointing at undeclared tools.
+        tools=[*TOOLS, tool],
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=messages,
     )
