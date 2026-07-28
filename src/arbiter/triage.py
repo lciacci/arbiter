@@ -110,7 +110,7 @@ def vote(unit: dict, findings: list[dict], voice: Voice) -> list[dict]:
     if findings and not by_index:
         raise AgentError(
             f"{voice} voice returned no readable votes for {len(findings)} findings "
-            f"(payload was {type(raw).__name__}, {len(raw)} long). "
+            f"(payload type {type(raw).__name__}). "
             "Refusing to record that as an all-UNSURE ballot."
         )
 
@@ -145,15 +145,32 @@ def _coerce_votes(raw: object) -> list[dict]:
         try:
             loaded = json.loads(raw)
         except json.JSONDecodeError:
-            return [
-                {"index": int(i), "vote": v, "rationale": "(recovered; ballot JSON was malformed)"}
-                for i, v in re.findall(
-                    r'"index"\s*:\s*(\d+)\s*,\s*"vote"\s*:\s*"(keep|drop|unsure)"', raw
-                )
-            ]
-        if isinstance(loaded, list):
-            return [v for v in loaded if isinstance(v, dict)]
+            return _salvage(raw)
+        return _coerce_votes(loaded)
+    if isinstance(raw, dict):
+        # Seen: the array arrives wrapped, e.g. {"votes": [...]}. Recurse into
+        # the first list-valued entry rather than discarding a readable ballot.
+        for v in raw.values():
+            if isinstance(v, list):
+                return _coerce_votes(v)
     return []
+
+
+def _salvage(raw: str) -> list[dict]:
+    """Pull index/vote pairs out of a ballot whose JSON will not parse.
+
+    Field order is not guaranteed, so index-then-vote and vote-then-index are
+    both matched. Objects are split on braces first so a pair cannot be assembled
+    from two different votes.
+    """
+    out: list[dict] = []
+    for chunk in re.findall(r"\{[^{}]*\}", raw, re.S):
+        i = re.search(r'"index"\s*:\s*(\d+)', chunk)
+        v = re.search(r'"vote"\s*:\s*"(keep|drop|unsure)"', chunk)
+        if i and v:
+            out.append({"index": int(i.group(1)), "vote": v.group(1),
+                        "rationale": "(recovered; ballot JSON was malformed)"})
+    return out
 
 
 def classify(

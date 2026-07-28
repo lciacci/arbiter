@@ -420,3 +420,66 @@ def test_coerce_returns_empty_for_unusable_payloads():
     assert _coerce_votes(None) == []
     assert _coerce_votes("not json at all") == []
     assert _coerce_votes(12) == []
+
+
+# ---------- RCE and write bypasses (arbiter found these in its own allowlist) ----------
+
+@pytest.mark.parametrize("cmd,why", [
+    ("find . -exec sh -c 'echo pwned' ;", "find -exec is a full shell escape"),
+    ("find . -execdir sh -c x ;", "-execdir likewise"),
+    ("find . -ok rm {} ;", "-ok likewise, with a prompt"),
+    ("find . -name x -delete", "-delete writes, on a read-only allowlist"),
+    ("find . -fprintf /tmp/out %p", "-fprintf writes a file"),
+    ("awk -f evil.awk", "-f runs a program file from the repo under review"),
+    ("awk --file=evil.awk", "--flag=value form"),
+    ("sed -f evil.sed", "sed -f likewise"),
+    ("sed -i s/a/b/ file", "-i edits in place"),
+    ("grep -f patterns.txt .", "grep -f reads a program file"),
+])
+def test_exec_and_write_flags_are_refused(cmd, why):
+    assert refused(cmd), why
+
+
+@pytest.mark.parametrize("cmd", [
+    "find . -name '*.py'",
+    "find . -type f -maxdepth 2",
+    "awk '{print $1}' file.txt",
+    "sed -n 1,20p file.txt",
+    "grep -rn needle src",
+])
+def test_ordinary_inspection_still_allowed(cmd):
+    assert not refused(cmd)
+
+
+def test_find_exec_does_not_actually_execute(tmp_path):
+    """Live check: the refusal happens before subprocess.run, not after."""
+    from arbiter.tools import run_command
+    out = run_command(tmp_path, "find . -maxdepth 0 -exec sh -c 'echo LEAKED' ;")
+    assert out.startswith("REFUSED:")
+    assert "LEAKED" not in out
+
+
+# ---------- ballot coercion, hardened ----------
+
+def test_coerce_handles_vote_before_index():
+    """Field order is not guaranteed; the salvage regex must not assume it."""
+    broken = '[{"vote": "keep", "index": 0, "rationale": "unterminated }]'
+    assert [(v["index"], v["vote"]) for v in _coerce_votes(broken)] == [(0, "keep")]
+
+
+def test_coerce_unwraps_a_dict_wrapped_array():
+    assert _coerce_votes({"votes": [{"index": 0, "vote": "drop"}]}) == [
+        {"index": 0, "vote": "drop"}
+    ]
+
+
+def test_coerce_does_not_stitch_pairs_across_two_votes():
+    """An index from one object must not pair with a vote from the next.
+
+    The trailing comma makes this unparseable, so the salvage path runs. Object
+    0 has an index but no vote and must be dropped rather than borrowing the
+    vote from object 1.
+    """
+    broken = '[{"index": 0, "note": "x"}, {"vote": "keep", "index": 1},]'
+    got = [(v["index"], v["vote"]) for v in _coerce_votes(broken)]
+    assert got == [(1, "keep")]

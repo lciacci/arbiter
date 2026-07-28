@@ -38,10 +38,30 @@ TIMEOUT_SECONDS = 20
 MAX_OUTPUT_CHARS = 6000
 
 # Read-only inspection only. Nothing that writes, networks, or installs.
+#
+# "Read-only binary" is not a property of the binary alone. Several of these
+# will happily execute another program, or delete files, if asked the right way:
+# `find -exec` is a full shell escape, `awk -f` and `sed -f` run a script file
+# out of the repository under review. Membership here is necessary, not
+# sufficient — DANGEROUS_FLAGS carries the rest.
 ALLOWED = frozenset({
     "git", "grep", "rg", "ls", "cat", "head", "tail", "wc", "find", "file",
     "python3", "sed", "awk", "sort", "uniq", "diff", "basename", "dirname",
 })
+
+# Per-binary flags that break the read-only guarantee. Matched against the exact
+# argument and against its `--flag=value` form.
+DANGEROUS_FLAGS = {
+    # -exec/-ok run an arbitrary command; the rest write or delete.
+    "find": {"-exec", "-execdir", "-ok", "-okdir", "-delete",
+             "-fprint", "-fprint0", "-fprintf", "-fls"},
+    # -f/--file loads a program from a file — i.e. executes code under review.
+    "awk": {"-f", "--file", "--source", "--exec"},
+    "sed": {"-f", "--file", "-i", "--in-place", "-s"},
+    # grep/rg can write with these; rg can also execute a preprocessor.
+    "rg": {"--pre", "--hostname-bin", "--generate"},
+    "grep": {"-f", "--file"},
+}
 
 # git is the whole point of this tool and also the easiest way to mutate a
 # repo, so its subcommands are allowlisted separately.
@@ -112,11 +132,31 @@ def _refuse(repo: Path, argv: list[str]) -> str | None:
         return f"{binary!r} is not in the read-only allowlist"
     if binary == "git" and (bad := _refuse_git(argv)):
         return bad
-    if binary in ("python3", "awk", "sed") and not _script_is_inline(argv):
-        return f"{binary} is allowed only with an inline script (-c / -n / program text)"
+    if bad := _refuse_dangerous_flags(binary, argv):
+        return bad
+    if binary == "python3" and "-c" not in argv:
+        return "python3 is allowed only with an inline script (-c)"
     for arg in argv[1:]:
         if bad := _escapes_repo(repo, arg):
             return bad
+    return None
+
+
+def _refuse_dangerous_flags(binary: str, argv: list[str]) -> str | None:
+    """Refuse per-binary flags that break the read-only guarantee.
+
+    Being on ALLOWED only says the binary is normally an inspection tool. It
+    says nothing about the arguments. `find . -exec sh -c '…' \\;` passed every
+    other check in this module and achieved arbitrary code execution: argv[0]
+    was `find`, and `sh` was just another argument nothing looked at.
+    """
+    bad = DANGEROUS_FLAGS.get(binary)
+    if not bad:
+        return None
+    for arg in argv[1:]:
+        head = arg.split("=", 1)[0]
+        if arg in bad or head in bad:
+            return f"{binary} {arg!r} can execute or write; only inspection is allowed"
     return None
 
 
@@ -138,17 +178,6 @@ def _refuse_git(argv: list[str]) -> str | None:
     if sub not in GIT_READONLY:
         return f"git subcommand {sub!r} is not read-only"
     return None
-
-
-def _script_is_inline(argv: list[str]) -> bool:
-    """python3 -c / sed -n / awk 'prog' — not `python3 some_file.py`.
-
-    Running a file from the repo would execute code under review, which is the
-    one thing a reviewer must never do.
-    """
-    if Path(argv[0]).name == "python3":
-        return "-c" in argv
-    return True
 
 
 def _escapes_repo(repo: Path, arg: str) -> str | None:
