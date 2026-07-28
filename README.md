@@ -35,6 +35,9 @@ version that runs anywhere:
 It is not trying to beat `ultra` on finding quality. See *Provenance* for what
 the numbers behind this pattern actually support.
 
+Working notes: [`docs/STATE.md`](docs/STATE.md) for where this is and how it
+got here, [`docs/NEXT_SESSION.md`](docs/NEXT_SESSION.md) to pick it back up.
+
 ## Install
 
 Requires Python 3.13+ and `ANTHROPIC_API_KEY` in the environment or a `.env`.
