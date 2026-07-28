@@ -87,12 +87,50 @@ same model, same call count, plus a shell → qualitatively different findings.
    that owns it), but it is part of what would make this useful to someone other
    than its author.
 
-6. **Watch the triage split.** The tessera run produced 0 blocking, 8 advisory,
-   **0 dropped** — every finding got split votes. Either that file genuinely has
-   nothing blocking, or the new "read the rationale critically" instruction has
-   made the two voices systematically disagree, in which case the blocking tier
-   never populates and the two-tier output collapses. One run cannot tell them
-   apart. Check this before trusting a clean result.
+6. **Triage was broken and is now fixed** — see below. Resolved, kept here
+   because the *way* it was found is the transferable part.
+
+## The triage bug, and two wrong diagnoses before it
+
+Three consecutive runs reported **0 blocking / 8 advisory / 0 dropped**. Two
+hypotheses were formed and both were wrong:
+
+1. The "drop a finding whose rationale hedges" instruction was suppressing
+   votes. Fixed it, re-ran, identical distribution. Refuted.
+2. Blocking requires unanimity between a deliberately recall-oriented voice and
+   a deliberately skeptical one, so on real code they never converge. Also
+   wrong.
+
+Both were inferences from output, because the votes were computed and thrown
+away. Logging the ballot took one commit and answered it immediately: the votes
+read `"missing or malformed vote"` — the internal fallback string. The voices had
+never been heard at all.
+
+Cause: the model returns `votes` as a JSON **string** rather than an array, and
+that string is itself invalid JSON. Rationales quote the code under review, so a
+finding about the shell glob `*'"source"'*'"startup"'*` puts single quotes,
+double quotes and backslashes into the payload and the escaping does not
+survive. Iterating the string yielded characters, none matched the dict guard,
+and every finding fell to UNSURE.
+
+The UNSURE default existed so a parse failure could not silently delete a
+finding. It did something worse — it turned total triage failure into "both
+voices unsure" → everything advisory → **zero blocking, reported as a clean
+review**. The same fail-open shape already fixed in the finder path, left in the
+triage path.
+
+After the fix, same scope, same cost:
+
+| | ballot | blocking / advisory / dropped |
+|---|---|---|
+| before | `unsure/unsure=5` (parse failures) | 0 / 8 / 0 |
+| after | `keep/keep=4, drop/drop=3, keep/drop=1, keep/unsure=1` | **4 / 2 / 3** |
+
+Zero `unsure/unsure` remained. Triage discriminates: a third of findings dropped
+outright, which is the precision lever the architecture exists for.
+
+**Transferable lesson: instrument before hypothesising.** Two rounds of
+reasoning cost more than the one commit that logged the evidence.
 
 ## First run against a foreign repo
 
