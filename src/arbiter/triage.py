@@ -15,9 +15,11 @@ non-Python file. It now uses the same lang_fence as the other agents.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Literal
 
-from .client import call_tool
+from .client import AgentError, call_tool
 from .lang import lang_fence
 
 Voice = Literal["reviewer", "arbiter"]
@@ -97,7 +99,20 @@ def vote(unit: dict, findings: list[dict], voice: Voice) -> list[dict]:
 
     system = REVIEWER_VOICE if voice == "reviewer" else ARBITER_VOICE
     raw = call_tool(system, _user_message(unit, findings), TOOL).get("votes", [])
-    by_index = {v["index"]: v for v in raw if isinstance(v, dict) and "index" in v}
+    parsed = _coerce_votes(raw)
+    by_index = {v["index"]: v for v in parsed if isinstance(v, dict) and "index" in v}
+
+    # A ballot that could not be read at all is a failure, not a shrug. Defaulting
+    # every finding to UNSURE turns it into "nothing blocking" — a total triage
+    # failure that reads as a clean review. That silently produced 0 blocking on
+    # three consecutive runs and cost two wrong diagnoses before the ballot was
+    # logged. Per-finding gaps still default to UNSURE; a wholesale failure raises.
+    if findings and not by_index:
+        raise AgentError(
+            f"{voice} voice returned no readable votes for {len(findings)} findings "
+            f"(payload was {type(raw).__name__}, {len(raw)} long). "
+            "Refusing to record that as an all-UNSURE ballot."
+        )
 
     out: list[dict] = []
     for i in range(len(findings)):
@@ -107,6 +122,38 @@ def vote(unit: dict, findings: list[dict], voice: Voice) -> list[dict]:
         else:
             out.append({"index": i, "vote": v["vote"], "rationale": v.get("rationale", "")})
     return out
+
+
+def _coerce_votes(raw: object) -> list[dict]:
+    """Normalise the model's `votes` payload into a list of vote dicts.
+
+    Two observed deviations from the schema, both content-dependent:
+
+    1. `votes` arrives as a JSON *string* rather than an array.
+    2. That string is not valid JSON, because rationales quote the code under
+       review. A finding about the shell glob `*'"source"'*'"startup"'*` puts
+       single quotes, double quotes and backslashes into a rationale, and the
+       model's own escaping does not survive it.
+
+    So: pass lists through, try strict parsing, and fall back to pulling the
+    index/vote pairs out with a regex. The rationale is lost in that last case,
+    which is acceptable — it is diagnostic text, while the vote is the decision.
+    """
+    if isinstance(raw, list):
+        return [v for v in raw if isinstance(v, dict)]
+    if isinstance(raw, str):
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError:
+            return [
+                {"index": int(i), "vote": v, "rationale": "(recovered; ballot JSON was malformed)"}
+                for i, v in re.findall(
+                    r'"index"\s*:\s*(\d+)\s*,\s*"vote"\s*:\s*"(keep|drop|unsure)"', raw
+                )
+            ]
+        if isinstance(loaded, list):
+            return [v for v in loaded if isinstance(v, dict)]
+    return []
 
 
 def classify(

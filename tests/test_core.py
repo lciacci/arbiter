@@ -385,3 +385,38 @@ def test_git_bypasses_are_refused(cmd, why):
 def test_plain_readonly_git_still_works():
     assert not refused("git show HEAD:src/arbiter/cli.py")
     assert not refused("git diff HEAD~1 HEAD -- src")
+
+
+# ---------- ballot coercion ----------
+#
+# Observed live: the model returned `votes` as a JSON *string* that was itself
+# invalid JSON, because rationales quote shell globs. Every vote then fell to the
+# UNSURE default, three runs reported 0 blocking, and two diagnoses were wrong.
+
+from arbiter.triage import _coerce_votes  # noqa: E402
+
+
+def test_coerce_passes_through_a_proper_list():
+    v = [{"index": 0, "vote": "keep", "rationale": "r"}]
+    assert _coerce_votes(v) == v
+
+
+def test_coerce_parses_a_json_string_payload():
+    out = _coerce_votes('[{"index": 0, "vote": "drop", "rationale": "r"}]')
+    assert out == [{"index": 0, "vote": "drop", "rationale": "r"}]
+
+
+def test_coerce_recovers_votes_from_malformed_json():
+    """The real payload: quotes from the reviewed code break the model's escaping."""
+    broken = '''[
+      {"index": 0, "vote": "keep", "rationale": "glob *'"source"'*'"startup"'* matches"},
+      {"index": 1, "vote": "drop", "rationale": "fine"}
+    ]'''
+    out = _coerce_votes(broken)
+    assert [(v["index"], v["vote"]) for v in out] == [(0, "keep"), (1, "drop")]
+
+
+def test_coerce_returns_empty_for_unusable_payloads():
+    assert _coerce_votes(None) == []
+    assert _coerce_votes("not json at all") == []
+    assert _coerce_votes(12) == []
