@@ -42,6 +42,27 @@ def resolve_repo(path: str | Path) -> Path:
     return Path(root.strip())
 
 
+def resolve_ref(repo: Path, ref: str) -> str:
+    """Pin a ref to the commit it names *now*.
+
+    `HEAD` is a moving target and this tool re-runs git constantly: once per
+    file for the before/after/diff, and again for every verification tool call
+    a finder makes. A commit landing mid-run therefore reviewed some files
+    against one tree and some against another, and let a finder confirm a claim
+    against code that was not the code in the diff it was shown. Resolving once
+    at startup makes "pinned ref" true of *time* as well as of disk.
+
+    A ref naming a tree rather than a commit (the empty tree, used to review an
+    initial commit) has nothing to resolve to. It is already a content hash, so
+    it cannot move; return it unchanged. A ref that does not exist at all also
+    lands here, and still fails loudly at the first real git call.
+    """
+    try:
+        return _git(repo, "rev-parse", "--verify", f"{ref}^{{commit}}").strip()
+    except GitError:
+        return ref
+
+
 def _range_args(repo: Path, base: str, head: str) -> list[str]:
     """Git args expressing "what changed in head, relative to base".
 

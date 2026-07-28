@@ -487,3 +487,58 @@ def test_declared_but_unwired_tool_raises_rather_than_lying():
 def test_hallucinated_tool_name_is_still_a_plain_refusal():
     from arbiter.tools import dispatch
     assert dispatch(_Path("/tmp"), "exec_shell", {}, "HEAD").startswith("REFUSED")
+
+
+# ---------- ref pinning ----------
+#
+# `--head` defaulted to the literal string "HEAD", which every git call
+# re-resolved. Reviewing a repo with a live session in it meant early files
+# could be diffed against one commit and later files against another, and a
+# finder's verification call resolved HEAD later still.
+
+import subprocess  # noqa: E402
+
+from arbiter.cli import ref_label  # noqa: E402
+from arbiter.vcs import resolve_ref  # noqa: E402
+
+
+def _repo(tmp_path):
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    return tmp_path, git
+
+
+def test_resolve_ref_pins_head_against_a_later_commit(tmp_path):
+    repo, git = _repo(tmp_path)
+    pinned = resolve_ref(repo, "HEAD")
+
+    (repo / "b.py").write_text("y = 2\n")
+    git("add", "-A")
+    git("commit", "-qm", "two")
+
+    assert pinned != resolve_ref(repo, "HEAD")     # HEAD moved
+    assert pinned == resolve_ref(repo, pinned)     # the pin did not
+
+
+def test_resolve_ref_leaves_a_non_commit_ref_alone(tmp_path):
+    """The empty tree is used to review an initial commit; it has no commit."""
+    repo, _ = _repo(tmp_path)
+    empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    assert resolve_ref(repo, empty_tree) == empty_tree
+
+
+def test_resolve_ref_does_not_invent_a_commit_for_a_bad_ref(tmp_path):
+    """A typo'd branch must stay wrong and fail at the first real git call."""
+    repo, _ = _repo(tmp_path)
+    assert resolve_ref(repo, "no-such-branch") == "no-such-branch"
+
+
+def test_ref_label_shows_what_a_name_resolved_to():
+    assert ref_label("HEAD", "a1b2c3d4e5f6") == "HEAD (a1b2c3d4)"
+    assert ref_label("a1b2c3d4e5f6", "a1b2c3d4e5f6") == "a1b2c3d4e5f6"

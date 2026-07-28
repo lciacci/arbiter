@@ -23,7 +23,7 @@ from .lang import DEFAULT_EXTS
 from .reviewer import review
 from .second_pass import second_pass
 from .triage import classify, vote
-from .vcs import GitError, change_units, resolve_repo
+from .vcs import GitError, change_units, resolve_ref, resolve_repo
 
 
 def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None) -> dict:
@@ -95,6 +95,15 @@ def exit_code(results: list[dict]) -> int:
     if any(r.get("error") for r in results):
         return 3
     return 0
+
+
+def ref_label(ref: str, sha: str) -> str:
+    """`main (a1b2c3d4)` — what was asked for, and what it actually resolved to.
+
+    The report is meant to be pasted into a PR, where "HEAD" alone is not a
+    statement anyone can check later.
+    """
+    return ref if ref == sha else f"{ref} ({sha[:8]})"
 
 
 def render(results: list[dict], base: str, head: str, spend: dict | None = None) -> str:
@@ -183,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-triage", action="store_true",
                    help="skip the triage voices; everything lands advisory (cheaper, noisier)")
     p.add_argument("--no-verify", action="store_true",
-                   help="deny the finders the read-only shell tool (cheaper, and the "
+                   help="deny the finders the read-only inspection tools (cheaper, and the "
                         "right choice when reviewing code you do not trust)")
     args = p.parse_args(argv)
 
@@ -191,17 +200,22 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         repo = resolve_repo(args.repo)
+        # Pin both refs before anything reads git, so a commit landing in this
+        # repo mid-run cannot move the code out from under the review.
+        base, head = resolve_ref(repo, args.base), resolve_ref(repo, args.head)
         exts = frozenset(e.lstrip(".").lower() for e in args.ext) if args.ext else DEFAULT_EXTS
-        units = change_units(repo, args.base, args.head, exts, args.path)
+        units = change_units(repo, base, head, exts, args.path)
     except GitError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    base_label, head_label = ref_label(args.base, base), ref_label(args.head, head)
+
     if not units:
-        print(f"No reviewable changes in {args.head} vs {args.base}.", file=sys.stderr)
+        print(f"No reviewable changes in {head_label} vs {base_label}.", file=sys.stderr)
         return 0
 
-    print(f"Reviewing {len(units)} file(s) in {repo.name} ({args.head} vs {args.base})…", file=sys.stderr)
+    print(f"Reviewing {len(units)} file(s) in {repo.name} ({head_label} vs {base_label})…", file=sys.stderr)
 
     def guarded(u: dict) -> dict:
         """Run one unit, converting any failure into a recorded error.
@@ -256,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     body = (
         json.dumps({"results": results, "usage": spend}, indent=2)
         if args.json
-        else render(results, args.base, args.head, spend)
+        else render(results, base_label, head_label, spend)
     )
 
     if args.out:

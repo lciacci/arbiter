@@ -94,8 +94,9 @@ is an argument for running both, not for picking one.
    **24 model calls, 185k in / 12k out, $0.73**. That is ~12 calls per file, not
    4 — verification triples the call count, since every turn resends the
    conversation. ~$0.37/file, so a 20-file branch is ~$7. Earlier input-only
-   estimates were 9x low. Still unmeasured: the same scope with `--no-verify`,
-   which is the number that says whether verification is worth 3x.
+   estimates were 9x low. Second point, same shape: **7 Python files → $2.74**,
+   ~$0.39/file. What the 3x buys is filtering, not volume — same finding count,
+   ~3x as many dropped by triage.
 3. **Tessera seams.** `docs/FINDINGS.md` exists and is empty — that is the S5
    feedback seam. And the canonical contract
    (`~/claude/tessera/docs/contracts/three-project-cohesion.md`) still gates S4

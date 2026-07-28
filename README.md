@@ -65,7 +65,7 @@ arbiter --path src/arbiter --path 'tests/*.py'
 # Cheaper and noisier: skip triage, everything lands advisory
 arbiter --no-triage
 
-# Deny the finders the shell tool — do this for code you do not trust
+# Deny the finders the inspection tools — do this for code you do not trust
 arbiter --no-verify
 
 # Machine-readable (findings plus the usage record)
@@ -113,6 +113,18 @@ read as options. Everything reads through git at a pinned ref, so a finder
 cannot confirm a claim against a working tree that differs from the code under
 review. See `src/arbiter/tools.py`.
 
+`--base` and `--head` are resolved to commit SHAs once at startup, so the ref is
+pinned in time as well: it is safe to review a repo someone else is actively
+committing to, and the report records the SHAs it actually read. Uncommitted
+work is never reviewed — everything comes from git, nothing from the working
+tree.
+
+**This boundary is young.** `tools.py` was rewritten on 2026-07-28 and has one
+live run behind it. Two independent reviews of the *previous* design found six
+holes between them. The argument for this one is that it removes the category —
+model input never reaches argv, no interpreter, no free text to a shell — not
+that it has been proven in use.
+
 **Reviewing a PR from someone you do not trust: use `--no-verify`, or run it in
 a container.**
 
@@ -139,11 +151,18 @@ Every run reports its own usage, to stderr and at the foot of the report:
 <N> model calls · <in> in / <out> out tokens · ~$<estimate>
 ```
 
-One measured data point: **2 shell files, 24 model calls, 185k in / 12k out,
-$0.73** — roughly $0.37 per file, so a 20-file branch lands near $7. Verification
-is most of that; it triples the call count because every turn resends the
-conversation. Your figure depends entirely on how much code you point it at, so
-run it and read the line rather than trusting this one.
+Two measured data points:
+
+| scope | cost | per file |
+|---|---|---|
+| 2 shell files (24 model calls, 185k in / 12k out) | **$0.73** | ~$0.37 |
+| 7 Python files | **$2.74** | ~$0.39 |
+
+So a 20-file branch lands near $7. Verification is most of that; it triples the
+call count because every turn resends the conversation. What that 3× buys is
+**filtering, not volume** — the same number of findings, but roughly three times
+as many of them dropped by triage. Your figure depends entirely on how much code
+you point it at, so run it and read the line rather than trusting these.
 
 Pricing is indicative list price (`PRICE_IN_PER_MTOK` in `client.py`) and will
 drift; treat it as "cents or dollars", not an invoice. Drivers, in order:

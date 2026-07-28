@@ -24,8 +24,9 @@ The finders can run typed read-only inspection tools (`read_file`, `search`,
 on by default and costs roughly 3× a bare run.
 
 **Measured, so don't re-derive it:**
-- ~$0.72 for 2 shell files, ~$2.74 for 7 Python files. Verification is ~3× and
-  buys filtering, not volume: same finding count, three times as many dropped.
+- $0.73 for 2 shell files, $2.74 for 7 Python files (~$0.37–0.39/file).
+  Verification is ~3× and buys filtering, not volume: same finding count, three
+  times as many dropped.
 - Two head-to-heads against workflow-backed `/code-review` on identical diffs.
   arbiter finds real critical bugs and is not sufficient on a security boundary.
   Round 2: arbiter found 1 RCE in its own allowlist, `/code-review` found 5 more.
@@ -35,7 +36,8 @@ on by default and costs roughly 3× a bare run.
 1. **Use it on a real branch** in `tessera` or `conclave` and judge whether the
    blocking tier is short enough to actually read. It has had one run against a
    repo that is not itself. It has been reviewed harder than it has been used,
-   and that is the wrong ratio.
+   and that is the wrong ratio. Safe to point at a repo with a live session in
+   it: refs are pinned to SHAs at startup, and only committed state is read.
 2. **Wire it as a git hook.** The exit codes were designed for it (1 blocking,
    2 could-not-run, 3 partial failure) and it has never been run that way.
 3. **Re-measure quality since the typed-tool rewrite.** Every head-to-head so
