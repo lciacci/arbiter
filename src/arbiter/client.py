@@ -106,10 +106,13 @@ def call_tool_verified(
         if report is not None:
             return dict(report.input)
 
-        runs = [b for b in calls if b.name == RUN_TOOL["name"]]
-        if not runs:
+        if not calls:
             break  # model produced only prose; fall through to the forced call
 
+        # A tool_result is required for EVERY tool_use in the preceding
+        # assistant turn. Answering only the run_command blocks would leave a
+        # hallucinated tool name unanswered and the next request would be
+        # rejected outright, so unknown tools get an explicit refusal instead.
         messages.append({"role": "assistant", "content": resp.content})
         messages.append({
             "role": "user",
@@ -117,20 +120,30 @@ def call_tool_verified(
                 {
                     "type": "tool_result",
                     "tool_use_id": b.id,
-                    "content": run_command(repo, b.input.get("command", "")),
+                    "content": (
+                        run_command(repo, b.input.get("command", ""))
+                        if b.name == RUN_TOOL["name"]
+                        else f"REFUSED: no tool named {b.name!r} is available"
+                    ),
                 }
-                for b in runs
+                for b in calls
             ],
         })
 
     # Budget spent or the model stalled. Force the report with what it now knows.
-    messages.append({
-        "role": "user",
-        "content": (
-            "Stop checking and report now, using the "
-            f"{tool['name']} tool, based on what you have established."
-        ),
-    })
+    #
+    # Only append the nudge when the transcript does not already end on a user
+    # turn. Exhausting the budget leaves the last message as the tool_result
+    # user turn, and appending a second user message breaks the API's strict
+    # alternation — which failed the fallback in exactly the case it exists for.
+    if messages[-1]["role"] != "user":
+        messages.append({
+            "role": "user",
+            "content": (
+                "Stop checking and report now, using the "
+                f"{tool['name']} tool, based on what you have established."
+            ),
+        })
     resp = client().messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,

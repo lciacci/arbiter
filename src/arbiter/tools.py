@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 TIMEOUT_SECONDS = 20
 MAX_OUTPUT_CHARS = 6000
@@ -110,15 +110,33 @@ def _refuse(repo: Path, argv: list[str]) -> str | None:
     binary = Path(argv[0]).name
     if binary not in ALLOWED:
         return f"{binary!r} is not in the read-only allowlist"
-    if binary == "git":
-        sub = next((a for a in argv[1:] if not a.startswith("-")), None)
-        if sub not in GIT_READONLY:
-            return f"git subcommand {sub!r} is not read-only"
+    if binary == "git" and (bad := _refuse_git(argv)):
+        return bad
     if binary in ("python3", "awk", "sed") and not _script_is_inline(argv):
         return f"{binary} is allowed only with an inline script (-c / -n / program text)"
     for arg in argv[1:]:
         if bad := _escapes_repo(repo, arg):
             return bad
+    return None
+
+
+def _refuse_git(argv: list[str]) -> str | None:
+    """git must be `git <read-only-subcommand> …` with no global options.
+
+    Skipping leading flags to find the subcommand is not safe: git's global
+    options can execute arbitrary code before the subcommand ever runs.
+    `--exec-path=DIR` makes git load its sub-programs from DIR, and
+    `-c alias.x=!sh` or `-c core.pager=…` inject commands via config. Both
+    would sail past a check that only looks at the first non-flag token.
+    Since cwd is already the repo, no global option is worth that risk.
+    """
+    if len(argv) < 2:
+        return "git needs a subcommand"
+    sub = argv[1]
+    if sub.startswith("-"):
+        return f"git global option {sub!r} is not allowed; use `git <subcommand> …`"
+    if sub not in GIT_READONLY:
+        return f"git subcommand {sub!r} is not read-only"
     return None
 
 
@@ -136,14 +154,18 @@ def _script_is_inline(argv: list[str]) -> bool:
 def _escapes_repo(repo: Path, arg: str) -> str | None:
     if arg.startswith("-"):
         return None
-    # Refs and pathspecs like `HEAD~1:src/a.py` are not filesystem paths.
-    if ":" in arg or arg.startswith("HEAD") or ".." in arg.split("/"):
-        if ".." in arg.split("/"):
-            return f"path {arg!r} escapes the repository"
-        return None
-    if Path(arg).is_absolute():
+
+    # A git pathspec can carry the path after a ref: `HEAD~1:../etc/passwd`.
+    # Splitting the raw string on "/" leaves "HEAD~1:.." as one token, so a
+    # single leading `..` never appeared as its own element and slipped the
+    # check. Compare path *components* of the portion after the ref instead.
+    candidate = arg.split(":", 1)[1] if ":" in arg else arg
+    if ".." in PurePosixPath(candidate).parts:
+        return f"path {arg!r} escapes the repository"
+
+    if Path(candidate).is_absolute():
         try:
-            Path(arg).resolve().relative_to(repo.resolve())
+            Path(candidate).resolve().relative_to(repo.resolve())
         except ValueError:
             return f"absolute path {arg!r} is outside the repository"
     return None

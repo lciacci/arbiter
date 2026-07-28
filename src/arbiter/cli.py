@@ -203,7 +203,6 @@ def main(argv: list[str] | None = None) -> int:
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         results = list(pool.map(guarded, units))
 
-    failed = [r for r in results if r.get("error")]
     for r in results:
         if r.get("error"):
             print(f"  {r['path']}: FAILED — {r['error']}", file=sys.stderr)

@@ -367,3 +367,21 @@ def test_shell_metacharacters_are_inert_not_interpreted():
     # Same metacharacters, no path escape: still a plain `git log` invocation,
     # so it is allowed — the `|` never becomes a pipe.
     assert _refuse(REPO, shlex.split("git log --grep '|' -5")) is None
+
+
+# ---------- allowlist bypasses found by arbiter's own verified run ----------
+
+@pytest.mark.parametrize("cmd,why", [
+    ("git show HEAD~1:../etc/passwd", "single dotdot after a ref"),
+    ("git show HEAD:../../secrets", "dotdot chain after a ref"),
+    ("git --exec-path=/tmp/evil show HEAD:a.py", "--exec-path runs foreign binaries"),
+    ("git -c alias.x=!sh log", "-c injects config, and aliases can shell out"),
+    ("git --upload-pack=/tmp/evil log", "any global option before the subcommand"),
+])
+def test_git_bypasses_are_refused(cmd, why):
+    assert refused(cmd), why
+
+
+def test_plain_readonly_git_still_works():
+    assert not refused("git show HEAD:src/arbiter/cli.py")
+    assert not refused("git diff HEAD~1 HEAD -- src")

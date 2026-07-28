@@ -45,6 +45,8 @@ Vote UNSURE if the issue is real but small, or if the bug claim is plausible but
 
 You see only the findings — not who proposed them. Apply equal scrutiny to every finding. A clean refactor where every finding is a hallucination is a legitimate outcome — return DROP on all of them if that is what the code shows.
 
+Each finding is shown with the reasoning its author gave. Treat that reasoning as the claim's strongest case: if it still does not establish the bug, or if it hedges, contradicts itself, or argues its way back out of its own conclusion, DROP.
+
 For each vote include a one-sentence rationale grounded in the code."""
 
 TOOL = {
