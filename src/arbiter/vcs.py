@@ -13,6 +13,7 @@ one file at a time and cannot reason across files in the same change.
 from __future__ import annotations
 
 import subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 
 from .lang import DEFAULT_EXTS, is_reviewable
@@ -41,9 +42,26 @@ def resolve_repo(path: str | Path) -> Path:
     return Path(root.strip())
 
 
+def _range_args(repo: Path, base: str, head: str) -> list[str]:
+    """Git args expressing "what changed in head, relative to base".
+
+    Prefers three-dot (merge-base) semantics, which is what branch review wants:
+    it excludes commits that landed on base after the branch diverged. Falls
+    back to the two-argument form when three-dot is invalid — a root commit has
+    no merge base, and a bare tree ref (e.g. the empty tree, for reviewing an
+    initial commit) is not a commit at all.
+    """
+    try:
+        _git(repo, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+        _git(repo, "merge-base", base, head)
+    except GitError:
+        return [base, head]
+    return [f"{base}...{head}"]
+
+
 def changed_files(repo: Path, base: str, head: str = "HEAD") -> list[tuple[str, str]]:
     """[(status, path)] for files changed in head vs base. Status: A/M/D/R…"""
-    out = _git(repo, "diff", "--name-status", f"{base}...{head}")
+    out = _git(repo, "diff", "--name-status", *_range_args(repo, base, head))
     rows: list[tuple[str, str]] = []
     for line in out.splitlines():
         parts = line.split("\t")
@@ -61,16 +79,34 @@ def _content_at(repo: Path, ref: str, path: str) -> str:
         return ""
 
 
+def matches_any(path: str, patterns: list[str]) -> bool:
+    """True if path is under, or glob-matches, any pattern.
+
+    `src/arbiter` matches everything beneath it; `*.sh` matches by glob. An
+    empty pattern list matches everything.
+    """
+    if not patterns:
+        return True
+    return any(
+        path == p or path.startswith(p.rstrip("/") + "/") or fnmatch(path, p)
+        for p in patterns
+    )
+
+
 def change_units(
     repo: Path,
     base: str,
     head: str = "HEAD",
     exts: frozenset[str] | set[str] = DEFAULT_EXTS,
+    paths: list[str] | None = None,
 ) -> list[dict]:
     """Reviewable units for a ref range. Deletions and non-code files skipped."""
+    rng = _range_args(repo, base, head)
     units: list[dict] = []
     for status, path in changed_files(repo, base, head):
         if status == "D" or not is_reviewable(path, exts):
+            continue
+        if not matches_any(path, paths or []):
             continue
         after = _content_at(repo, head, path)
         if not after.strip():
@@ -81,7 +117,7 @@ def change_units(
                 "status": status,
                 "before": "" if status == "A" else _content_at(repo, base, path),
                 "after": after,
-                "diff": _git(repo, "diff", f"{base}...{head}", "--", path),
+                "diff": _git(repo, "diff", *rng, "--", path),
             }
         )
     return units

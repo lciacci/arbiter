@@ -122,3 +122,25 @@ def test_shell_is_reviewable_by_default():
     assert is_reviewable("scripts/gate.sh")
     assert is_reviewable("src/app.ts")
     assert not is_reviewable("README.md")
+
+
+# ---------- path filtering ----------
+
+from arbiter.vcs import matches_any  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "path,patterns,expected",
+    [
+        ("src/arbiter/cli.py", [], True),                      # no filter = everything
+        ("src/arbiter/cli.py", ["src/arbiter"], True),         # directory prefix
+        ("src/arbiter/cli.py", ["src/arbiter/"], True),        # trailing slash tolerated
+        ("src/arbiter/cli.py", ["src/arb"], False),            # prefix must be a path segment
+        ("scripts/gate/scan.py", ["src/arbiter"], False),
+        ("scripts/sql/lint.sh", ["*.sh"], True),               # glob
+        ("src/arbiter/cli.py", ["tests", "src/arbiter"], True),  # any-of
+        ("README.md", ["src/arbiter"], False),
+    ],
+)
+def test_matches_any(path, patterns, expected):
+    assert matches_any(path, patterns) is expected

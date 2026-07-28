@@ -91,6 +91,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=".", help="path inside the repo to review (default: cwd)")
     p.add_argument("--ext", action="append", default=None,
                    help=f"extension to review, repeatable (default: {' '.join(sorted(DEFAULT_EXTS))})")
+    p.add_argument("--path", action="append", default=None,
+                   help="limit review to these paths or globs, repeatable "
+                        "(default: everything changed)")
     p.add_argument("--jobs", type=int, default=4, help="files reviewed concurrently (default: 4)")
     p.add_argument("--out", default=None, help="write markdown here instead of stdout")
     p.add_argument("--json", action="store_true", help="emit raw JSON instead of markdown")
@@ -103,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repo = resolve_repo(args.repo)
         exts = frozenset(e.lstrip(".").lower() for e in args.ext) if args.ext else DEFAULT_EXTS
-        units = change_units(repo, args.base, args.head, exts)
+        units = change_units(repo, args.base, args.head, exts, args.path)
     except GitError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
