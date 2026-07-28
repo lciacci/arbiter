@@ -462,3 +462,28 @@ def test_coerce_does_not_stitch_pairs_across_two_votes():
     broken = '[{"index": 0, "note": "x"}, {"vote": "keep", "index": 1},]'
     got = [(v["index"], v["vote"]) for v in _coerce_votes(broken)]
     assert got == [(1, "keep")]
+
+
+def test_git_diff_honours_merge_base_flag():
+    """Three-dot is branch-review semantics; two-dot answers 'what did this commit do'."""
+    import inspect
+    from arbiter.tools import dispatch
+    src = inspect.getsource(dispatch)
+    assert '".." if params.get("merge_base") is False else "..."' in src
+
+
+def test_declared_but_unwired_tool_raises_rather_than_lying():
+    """A TOOLS entry with no dispatch branch is our bug, not a hallucinated name."""
+    import arbiter.tools as t
+    original = t.TOOL_NAMES
+    t.TOOL_NAMES = frozenset({*original, "not_wired_up"})
+    try:
+        with pytest.raises(NotImplementedError):
+            t.dispatch(_Path("/tmp"), "not_wired_up", {}, "HEAD")
+    finally:
+        t.TOOL_NAMES = original
+
+
+def test_hallucinated_tool_name_is_still_a_plain_refusal():
+    from arbiter.tools import dispatch
+    assert dispatch(_Path("/tmp"), "exec_shell", {}, "HEAD").startswith("REFUSED")

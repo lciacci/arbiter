@@ -110,6 +110,15 @@ TOOLS = [
                 "base": {"type": "string"},
                 "head": {"type": "string"},
                 "path": {"type": "string", "description": "Optional path to restrict the diff to."},
+                "merge_base": {
+                    "type": "boolean",
+                    "description": (
+                        "True (default) diffs from the merge-base of base and head — what "
+                        "changed on head since it diverged, which is what branch review "
+                        "means. False diffs the two refs directly, which is what you want "
+                        "to ask 'what does this exact commit change'."
+                    ),
+                },
                 "why": {"type": "string", "description": "What claim this checks."},
             },
             "required": ["base", "head", "why"],
@@ -144,7 +153,8 @@ def dispatch(repo: Path, name: str, params: dict, default_ref: str) -> str:
                            _opt_path(params.get("path")),
                            _ref(params.get("ref") or default_ref))
         if name == "git_diff":
-            return _git(repo, "diff", _ref(params.get("base")) + "..." + _ref(params.get("head")),
+            sep = ".." if params.get("merge_base") is False else "..."
+            return _git(repo, "diff", _ref(params.get("base")) + sep + _ref(params.get("head")),
                         *(["--", _path(params["path"])] if params.get("path") else []))
         if name == "git_log":
             n = max(1, min(int(params.get("limit") or 20), MAX_LOG_ENTRIES))
@@ -154,6 +164,11 @@ def dispatch(repo: Path, name: str, params: dict, default_ref: str) -> str:
         return f"REFUSED: {e}"
     except (ValueError, TypeError) as e:
         return f"REFUSED: bad parameters ({e})"
+    # Distinguish "you invented a tool" from "we declared one and forgot to wire
+    # it up". The second is our bug and would otherwise be reported to the model
+    # as though the tool never existed, which is misleading and silent.
+    if name in TOOL_NAMES:
+        raise NotImplementedError(f"{name} is declared in TOOLS but has no dispatch branch")
     return f"REFUSED: no tool named {name!r}"
 
 
