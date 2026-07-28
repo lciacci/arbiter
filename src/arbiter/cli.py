@@ -36,6 +36,7 @@ def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None)
     merged = merge(first, second)
 
     triage_note = None
+    ballot: list[dict] = []
     if skip_triage or not merged:
         tiers = [(f, "advisory") for f in merged]
     else:
@@ -43,6 +44,18 @@ def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None)
             rv = vote(unit, merged, "reviewer")
             av = vote(unit, merged, "arbiter")
             tiers = classify(merged, rv, av)
+            # Retain the ballot. Without it a surprising tier distribution is
+            # undiagnosable: two sessions were spent guessing why everything
+            # landed advisory, with the deciding evidence computed and dropped
+            # on the floor each time.
+            ballot = [
+                {"finding": f.get("description", "")[:100],
+                 "severity": f.get("severity"),
+                 "reviewer": r["vote"], "arbiter": a["vote"],
+                 "reviewer_why": r.get("rationale", ""),
+                 "arbiter_why": a.get("rationale", "")}
+                for f, r, a in zip(merged, rv, av)
+            ]
         except (AgentError, AnthropicError) as e:
             # Triage failing must not delete findings two completed calls
             # already paid for. Degrade to all-advisory — the same fallback
@@ -59,6 +72,7 @@ def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None)
         "advisory": [f for f, c in tiers if c == "advisory"],
         "dropped": [f for f, c in tiers if c == "dropped"],
         "triage_note": triage_note,
+        "ballot": ballot,
     }
 
 
@@ -222,6 +236,14 @@ def main(argv: list[str] | None = None) -> int:
             f"{len(r['blocking'])} blocking, {len(r['advisory'])} advisory",
             file=sys.stderr,
         )
+
+    from collections import Counter
+    mix = Counter(
+        f"{b['reviewer']}/{b['arbiter']}" for r in results for b in r.get("ballot", [])
+    )
+    if mix:
+        print("\ntriage ballot (reviewer/arbiter): "
+              + ", ".join(f"{k}={v}" for k, v in mix.most_common()), file=sys.stderr)
 
     spend = usage()
     print(

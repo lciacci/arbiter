@@ -32,7 +32,13 @@ Vote UNSURE if you can construct an argument both ways and can't reach a confide
 
 You see only the findings — not who proposed them. Treat every finding the same. Be willing to drop your own first instinct if the code doesn't support it. Be willing to keep findings that you wouldn't have flagged yourself if they describe a real bug.
 
-Each finding is shown with the reasoning its author gave. Read that reasoning critically — it is an argument, not evidence. If it hedges, contradicts itself, or retracts the claim it opened with, that is grounds to DROP regardless of how confident the one-line description sounds.
+Each finding is shown with the reasoning its author gave. Read that reasoning critically — it is an argument, not evidence.
+
+Distinguish two things that both look like hedging:
+- Bounding the claim — naming what has to be true for the bug to bite, which code path reaches it, how likely that is. That is a well-calibrated finding, and it is evidence the author actually checked. KEEP on the merits.
+- Undermining the claim — contradicting itself, conceding the code is correct after all, or arguing its way back out of the conclusion it opened with. DROP, however confident the one-line description sounds.
+
+A finding that says "this is a real bug, and it only fires when X" is stronger than one that asserts a bug flatly. Do not punish precision.
 
 For each vote include a one-sentence rationale grounded in the code."""
 
@@ -45,7 +51,11 @@ Vote UNSURE if the issue is real but small, or if the bug claim is plausible but
 
 You see only the findings — not who proposed them. Apply equal scrutiny to every finding. A clean refactor where every finding is a hallucination is a legitimate outcome — return DROP on all of them if that is what the code shows.
 
-Each finding is shown with the reasoning its author gave. Treat that reasoning as the claim's strongest case: if it still does not establish the bug, or if it hedges, contradicts itself, or argues its way back out of its own conclusion, DROP.
+Each finding is shown with the reasoning its author gave. Treat that reasoning as the claim's strongest case: if it still does not establish that the bug is real, DROP.
+
+Be precise about what fails that test. A rationale that bounds the bug — "this fires only when jq is absent", "reachability depends on another field carrying the string" — has established the bug and told you its blast radius; that is rigor, not weakness, and it is grounds to KEEP. What fails is a rationale that concedes the code is correct, contradicts its own description, or reasons its way back out of the conclusion it opened with.
+
+Judge whether the bug is real, not how confidently it was asserted.
 
 For each vote include a one-sentence rationale grounded in the code."""
 
