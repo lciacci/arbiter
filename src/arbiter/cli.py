@@ -15,7 +15,7 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 
-from anthropic import APIError
+from anthropic import AnthropicError
 
 from .client import AgentError, require_python
 from .findings import merge, severity_rank
@@ -32,12 +32,21 @@ def run_unit(unit: dict, *, skip_triage: bool = False) -> dict:
     second = second_pass(unit, first)
     merged = merge(first, second)
 
+    triage_note = None
     if skip_triage or not merged:
         tiers = [(f, "advisory") for f in merged]
     else:
-        rv = vote(unit, merged, "reviewer")
-        av = vote(unit, merged, "arbiter")
-        tiers = classify(merged, rv, av)
+        try:
+            rv = vote(unit, merged, "reviewer")
+            av = vote(unit, merged, "arbiter")
+            tiers = classify(merged, rv, av)
+        except (AgentError, AnthropicError) as e:
+            # Triage failing must not delete findings two completed calls
+            # already paid for. Degrade to all-advisory — the same fallback
+            # vote() applies to a single malformed ballot — and say so, rather
+            # than discarding the unit and re-deriving it at four calls a file.
+            tiers = [(f, "advisory") for f in merged]
+            triage_note = f"triage failed, all findings held advisory: {e}"
 
     return {
         "path": unit["path"],
@@ -46,7 +55,29 @@ def run_unit(unit: dict, *, skip_triage: bool = False) -> dict:
         "blocking": [f for f, c in tiers if c == "blocking"],
         "advisory": [f for f, c in tiers if c == "advisory"],
         "dropped": [f for f, c in tiers if c == "dropped"],
+        "triage_note": triage_note,
     }
+
+
+def exit_code(results: list[dict]) -> int:
+    """Process exit status for a completed run.
+
+    Strongest signal first:
+        1  blocking findings           -> reject
+        3  ran, but some file failed   -> incomplete, must not read as a pass
+        2  could not run at all        -> emitted by main() on GitError
+        0  reviewed clean
+
+    Blocking is checked before failures so a partial failure can never mask a
+    confirmed blocking finding behind a softer code. 3 is distinct from 2 so a
+    hook can tell "reviewed nine of ten files" from "arbiter never started" —
+    those warrant different responses.
+    """
+    if any(r["blocking"] for r in results):
+        return 1
+    if any(r.get("error") for r in results):
+        return 3
+    return 0
 
 
 def render(results: list[dict], base: str, head: str) -> str:
@@ -55,10 +86,12 @@ def render(results: list[dict], base: str, head: str) -> str:
     dropped = sum(len(r["dropped"]) for r in results)
 
     errored = [r for r in results if r.get("error")]
+    degraded = [r for r in results if r.get("triage_note")]
+    reviewed = len(results) - len(errored)
     out = [
         f"# arbiter — `{head}` vs `{base}`",
         "",
-        f"{len(results) - len(errored)} file(s) reviewed · "
+        f"{reviewed} file(s) reviewed · "
         f"**{len(blocking)} blocking** · {len(advisory)} advisory · {dropped} dropped by triage",
         "",
     ]
@@ -66,9 +99,26 @@ def render(results: list[dict], base: str, head: str) -> str:
         out += [f"> **{len(errored)} file(s) failed to review** — not clean, unreviewed:", ""]
         out += [f"> - `{r['path']}`: {r['error']}" for r in errored]
         out += [""]
+    if degraded:
+        out += [f"> **{len(degraded)} file(s) skipped triage** — findings held advisory, not confirmed:", ""]
+        out += [f"> - `{r['path']}`: {r['triage_note']}" for r in degraded]
+        out += [""]
+
+    # The empty-state must not claim triage agreed on anything when triage never
+    # ran. A report saying "both voices agreed" after every call failed is a
+    # false clean-review claim, and this report is meant to be pasted into PRs.
+    if reviewed == 0:
+        blocking_empty = "**No file was successfully reviewed.** This is not a clean result."
+    elif errored or degraded:
+        blocking_empty = (
+            "Nothing blocking among the files that completed triage — "
+            "see the caveats above for the ones that did not."
+        )
+    else:
+        blocking_empty = "Nothing blocking. Both triage voices agreed to keep zero findings."
 
     for title, items, empty in (
-        ("Blocking", blocking, "Nothing blocking. Both triage voices agreed to keep zero findings."),
+        ("Blocking", blocking, blocking_empty),
         ("Advisory", advisory, "No advisory findings."),
     ):
         out += [f"## {title}", ""]
@@ -125,16 +175,23 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Reviewing {len(units)} file(s) in {repo.name} ({args.head} vs {args.base})…", file=sys.stderr)
 
     def guarded(u: dict) -> dict:
-        """Run one unit, converting a failure into a recorded error.
+        """Run one unit, converting any failure into a recorded error.
 
-        A file that fails is reported as failed, never as clean. Keeping it
-        per-unit means one bad file doesn't discard the other ten results.
+        Catches Exception deliberately. Naming specific types leaks whatever
+        wasn't named out of pool.map, which re-raises on iteration and destroys
+        every completed result — the opposite of this function's purpose. The
+        earlier (AgentError, APIError) pair already missed anthropic's
+        RetryableError and WorkloadIdentityError, which subclass AnthropicError
+        rather than APIError. A failure here is always recorded and always
+        surfaces; nothing is swallowed.
         """
         try:
             return run_unit(u, skip_triage=args.no_triage)
-        except (AgentError, APIError) as e:
-            return {"path": u["path"], "status": u["status"], "error": str(e),
-                    "counts": {}, "blocking": [], "advisory": [], "dropped": []}
+        except Exception as e:  # noqa: BLE001 — see docstring
+            return {"path": u["path"], "status": u["status"],
+                    "error": f"{type(e).__name__}: {e}",
+                    "counts": {}, "blocking": [], "advisory": [], "dropped": [],
+                    "triage_note": None}
 
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         results = list(pool.map(guarded, units))
@@ -160,12 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(body)
 
-    # Exit 1 on blocking findings so this can gate a hook; exit 2 when a file
-    # failed to review. An unreviewed file must never exit 0 — a gate reading
-    # that as a pass is the fail-open shape this tool exists to catch.
-    if failed:
-        return 2
-    return 1 if any(r["blocking"] for r in results) else 0
+    return exit_code(results)
 
 
 if __name__ == "__main__":

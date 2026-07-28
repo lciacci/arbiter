@@ -81,10 +81,23 @@ def call_tool(system: str, user_msg: str, tool: dict) -> dict:
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": user_msg}],
     )
+    stop = getattr(resp, "stop_reason", "unknown")
+
+    # Truncation is the likelier failure than a missing block, and it is worse:
+    # the tool_use block IS present, its input is just cut off mid-JSON. That
+    # parses to {} or a partial object, yields zero findings, and reads as a
+    # clean file. Checked before the block scan so a half-written finding list
+    # can never be mistaken for a complete one.
+    if stop == "max_tokens":
+        raise AgentError(
+            f"{tool['name']}: response hit max_tokens ({MAX_TOKENS}), so its "
+            "tool input is truncated and any findings it carries are partial. "
+            "Refusing to report this as a complete review."
+        )
+
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
             return dict(block.input)
-    stop = getattr(resp, "stop_reason", "unknown")
     raise AgentError(
         f"{tool['name']}: no tool_use block in response (stop_reason={stop}). "
         "Refusing to report this as a clean review."

@@ -92,10 +92,15 @@ def parse_name_status(out: str) -> list[tuple[str, str, str]]:
 
 
 def _content_at(repo: Path, ref: str, path: str) -> str:
-    try:
-        return _git(repo, "show", f"{ref}:{path}")
-    except GitError:
-        return ""
+    """Content of `path` at `ref`. Raises GitError if it isn't there.
+
+    This used to swallow every GitError into "". That is what hid the rename
+    bug: a file read at the wrong path produced an empty before-state with no
+    signal, and the change was reviewed as if freshly written. Callers now only
+    call this where the file is known to exist at the ref, so a failure is a
+    real error and must surface.
+    """
+    return _git(repo, "show", f"{ref}:{path}")
 
 
 def matches_any(path: str, patterns: list[str]) -> bool:
@@ -127,6 +132,20 @@ def change_units(
             continue
         if not matches_any(path, paths or []):
             continue
+
+        # A (added) and C (copied) both produce a file that did not exist at
+        # base, so there is no before-state to read. Only R carries a real
+        # before-state at a *different* path.
+        is_new = status in ("A", "C")
+        before = "" if is_new else _content_at(repo, base, old_path)
+
+        # The pathspec must name both sides of a rename. Git applies rename
+        # detection *after* pathspec filtering, so limiting to the destination
+        # alone makes it emit "new file" with every line added — a diff that
+        # flatly contradicts the before-state above, and one the agents would
+        # review as 500 lines of brand-new code.
+        pathspec = [old_path, path] if status == "R" and old_path != path else [path]
+
         after = _content_at(repo, head, path)
         if not after.strip():
             continue
@@ -134,11 +153,9 @@ def change_units(
             {
                 "path": path,
                 "status": status,
-                # Read before-state at the path the file had *at base*, which
-                # differs from `path` for renames.
-                "before": "" if status == "A" else _content_at(repo, base, old_path),
+                "before": before,
                 "after": after,
-                "diff": _git(repo, "diff", *rng, "--", path),
+                "diff": _git(repo, "diff", *rng, "--", *pathspec),
             }
         )
     return units

@@ -227,8 +227,79 @@ def test_call_tool_returns_tool_input_when_present(monkeypatch):
 # ---------- dotfiles ----------
 
 def test_dotfiles_are_extensionless():
-    """`.gitignore` is a dotfile, not a file of type 'gitignore'."""
+    """A leading-dot basename is a dotfile, not a file of that type.
+
+    Only `.py` actually discriminates: for `.gitignore` and `my.dir/Makefile`
+    the old rsplit produced junk ("gitignore", "dir/makefile") that matched no
+    key either, so both implementations agreed. Asserting those alone would be
+    a test that passes against the code it is supposed to guard.
+    """
+    assert lang_fence(".py") == ""          # old impl returned "python"
+    assert not is_reviewable(".py")         # old impl returned True
     assert lang_fence(".gitignore") == ""
-    assert not is_reviewable(".gitignore")
     assert not is_reviewable("my.dir/Makefile")
     assert is_reviewable("my.dir/run.sh")
+
+
+# ---------- fail-loud CLI paths ----------
+#
+# The load-bearing promise of this tool is that an unreviewed file never reads
+# as a clean one. Nothing asserted that until these.
+
+from arbiter.cli import exit_code, render  # noqa: E402
+
+
+def ok(path="a.py", blocking=(), advisory=()):
+    return {"path": path, "status": "M", "blocking": list(blocking),
+            "advisory": list(advisory), "dropped": [],
+            "counts": {"first_pass": 0, "second_pass": 0, "merged": 0},
+            "triage_note": None}
+
+
+def err(path="b.py", error="AgentError: no tool_use block"):
+    return {"path": path, "status": "M", "error": error, "counts": {},
+            "blocking": [], "advisory": [], "dropped": [], "triage_note": None}
+
+
+def test_blocking_outranks_failure_in_exit_code():
+    """A partial failure must not downgrade a confirmed blocking finding.
+
+    Regression: `if failed: return 2` ran first, so a hook branching on 1 for
+    blocking never saw it when any file also errored.
+    """
+    assert exit_code([ok(blocking=[f()]), err()]) == 1
+
+
+def test_failed_file_never_exits_zero():
+    assert exit_code([ok(), err()]) == 3
+    assert exit_code([err()]) == 3
+
+
+def test_clean_run_exits_zero():
+    assert exit_code([ok(), ok()]) == 0
+
+
+def test_render_never_claims_triage_agreed_when_nothing_was_reviewed():
+    """The all-clear is a quotable claim; it must not appear after a total failure."""
+    out = render([err(), err("c.py")], "main", "HEAD")
+    assert "Both triage voices agreed" not in out
+    assert "not a clean result" in out
+    assert "0 file(s) reviewed" in out
+
+
+def test_render_hedges_the_all_clear_when_some_files_failed():
+    out = render([ok(), err()], "main", "HEAD")
+    assert "Both triage voices agreed" not in out
+    assert "files that completed triage" in out
+
+
+def test_render_lists_failures_as_unreviewed():
+    out = render([err("b.py", "boom")], "main", "HEAD")
+    assert "failed to review" in out and "b.py" in out and "boom" in out
+
+
+def test_render_surfaces_degraded_triage():
+    r = ok(advisory=[f()])
+    r["triage_note"] = "triage failed, all findings held advisory: boom"
+    out = render([r], "main", "HEAD")
+    assert "skipped triage" in out and "not confirmed" in out
