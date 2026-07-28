@@ -12,14 +12,20 @@ from __future__ import annotations
 
 import sys
 import threading
+from pathlib import Path
 
 from anthropic import Anthropic
+
+from .tools import RUN_TOOL, run_command
 
 MODEL = "claude-sonnet-4-6"
 
 # Every agent asks for structured output via a forced tool call; 4096 is enough
 # for a long finding list and keeps a runaway response bounded.
 MAX_TOKENS = 4096
+
+# Turns of read-only checking a finder may take before it must report.
+MAX_VERIFY_TURNS = 4
 
 MIN_PYTHON = (3, 13)
 
@@ -60,6 +66,82 @@ def client() -> Anthropic:
     return _CLIENT
 
 
+def call_tool_verified(
+    system: str,
+    user_msg: str,
+    tool: dict,
+    repo: Path | None,
+    max_turns: int = MAX_VERIFY_TURNS,
+) -> dict:
+    """Like call_tool, but the model may run read-only commands first.
+
+    Loops: the model either calls run_command (we execute it and hand back the
+    output) or calls the report tool (we return its input and stop). Falls back
+    to a plain forced call if `repo` is None or the turn budget runs out, so a
+    model that never stops exploring still produces a report.
+
+    Turn budget rather than an open loop because each turn costs a full call;
+    MAX_VERIFY_TURNS is where checking stops paying for itself.
+    """
+    if repo is None:
+        return call_tool(system, user_msg, tool)
+
+    messages: list[dict] = [{"role": "user", "content": user_msg}]
+    for _ in range(max_turns):
+        resp = client().messages.create(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=system,
+            tools=[RUN_TOOL, tool],
+            messages=messages,
+        )
+        if resp.stop_reason == "max_tokens":
+            raise AgentError(
+                f"{tool['name']}: response hit max_tokens ({MAX_TOKENS}); "
+                "its tool input is truncated. Refusing to report a partial review."
+            )
+
+        calls = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
+        report = next((b for b in calls if b.name == tool["name"]), None)
+        if report is not None:
+            return dict(report.input)
+
+        runs = [b for b in calls if b.name == RUN_TOOL["name"]]
+        if not runs:
+            break  # model produced only prose; fall through to the forced call
+
+        messages.append({"role": "assistant", "content": resp.content})
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": b.id,
+                    "content": run_command(repo, b.input.get("command", "")),
+                }
+                for b in runs
+            ],
+        })
+
+    # Budget spent or the model stalled. Force the report with what it now knows.
+    messages.append({
+        "role": "user",
+        "content": (
+            "Stop checking and report now, using the "
+            f"{tool['name']} tool, based on what you have established."
+        ),
+    })
+    resp = client().messages.create(
+        model=MODEL,
+        max_tokens=MAX_TOKENS,
+        system=system,
+        tools=[tool],
+        tool_choice={"type": "tool", "name": tool["name"]},
+        messages=messages,
+    )
+    return _extract(resp, tool)
+
+
 def call_tool(system: str, user_msg: str, tool: dict) -> dict:
     """One forced-tool-use call. Returns the tool input dict.
 
@@ -81,20 +163,25 @@ def call_tool(system: str, user_msg: str, tool: dict) -> dict:
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": user_msg}],
     )
-    stop = getattr(resp, "stop_reason", "unknown")
+    return _extract(resp, tool)
 
-    # Truncation is the likelier failure than a missing block, and it is worse:
-    # the tool_use block IS present, its input is just cut off mid-JSON. That
-    # parses to {} or a partial object, yields zero findings, and reads as a
-    # clean file. Checked before the block scan so a half-written finding list
-    # can never be mistaken for a complete one.
+
+def _extract(resp, tool: dict) -> dict:
+    """Pull the report tool's input out of a response, or fail loudly.
+
+    Truncation is the likelier failure than a missing block, and it is worse:
+    the tool_use block IS present, its input just cut off mid-JSON. That parses
+    to {} or a partial object, yields zero findings, and reads as a clean file.
+    Checked before the block scan so a half-written finding list can never be
+    mistaken for a complete one.
+    """
+    stop = getattr(resp, "stop_reason", "unknown")
     if stop == "max_tokens":
         raise AgentError(
             f"{tool['name']}: response hit max_tokens ({MAX_TOKENS}), so its "
             "tool input is truncated and any findings it carries are partial. "
             "Refusing to report this as a complete review."
         )
-
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool["name"]:
             return dict(block.input)

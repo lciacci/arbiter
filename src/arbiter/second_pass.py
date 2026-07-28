@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 
-from .client import call_tool
+from pathlib import Path
+
+from .client import call_tool_verified
 from .findings import FINDING_SCHEMA, validate
 from .lang import lang_fence
 
@@ -23,7 +25,8 @@ Your focus areas, in order:
 1. Correctness-critical bugs. The first reviewer is good at security vuln patterns (path traversal, SQLi, credential leaks) but often misses correctness-critical bugs: missing None / empty / type checks on return values, off-by-one, race conditions, missing branches, silent error suppression that violates the function's contract, state changes that aren't persisted.
 2. Architectural issues. Code that reinvents an existing helper in the same file, function-level coupling that should use existing abstractions, configuration that's set but never read or saved.
 3. Things hiding behind style. Style-heavy changes sometimes carry a real bug under the formatting noise — a parameter ordering swap, a sign flip, a condition negation. Read the diff for behavior changes, not just structure changes.
-4. Fail-open behavior. A check that cannot complete and returns a permissive default, an error path that exits with a status a caller will misread, a guard disabled by default. The first reviewer looks for bugs in what the code does; look also for what it does when it breaks.
+4. What the tooling actually does, not what the code appears to say. If a finding depends on the behaviour of git, a library, or the standard library, check it rather than reasoning from the source alone — run the command, read the installed package, evaluate the expression. Claims of the form "this call does X" are where single-pass review is weakest, and they are exactly what the first reviewer will have taken on faith.
+5. Fail-open behavior. A check that cannot complete and returns a permissive default, an error path that exits with a status a caller will misread, a guard disabled by default. The first reviewer looks for bugs in what the code does; look also for what it does when it breaks.
 
 Anti-redundancy rules:
 - The first reviewer's findings are shown to you as context. Do NOT re-report the same issues with different words. If you would have flagged the same bug at the same line, skip it — the caller merges your output with theirs.
@@ -48,10 +51,13 @@ TOOL = {
 }
 
 
-def second_pass(unit: dict, first_pass_findings: list[dict]) -> list[dict]:
+def second_pass(
+    unit: dict, first_pass_findings: list[dict], repo: Path | None = None
+) -> list[dict]:
     """Independent second review. Returns only this agent's own new findings."""
     user_msg = _user_message(unit, first_pass_findings)
-    return validate(call_tool(SYSTEM, user_msg, TOOL).get("findings", []))
+    raw = call_tool_verified(SYSTEM, user_msg, TOOL, repo)
+    return validate(raw.get("findings", []))
 
 
 def _user_message(unit: dict, first_pass_findings: list[dict]) -> str:

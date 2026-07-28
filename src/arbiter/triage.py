@@ -32,6 +32,8 @@ Vote UNSURE if you can construct an argument both ways and can't reach a confide
 
 You see only the findings — not who proposed them. Treat every finding the same. Be willing to drop your own first instinct if the code doesn't support it. Be willing to keep findings that you wouldn't have flagged yourself if they describe a real bug.
 
+Each finding is shown with the reasoning its author gave. Read that reasoning critically — it is an argument, not evidence. If it hedges, contradicts itself, or retracts the claim it opened with, that is grounds to DROP regardless of how confident the one-line description sounds.
+
 For each vote include a one-sentence rationale grounded in the code."""
 
 # Skeptical. Drops a finding when the bug can't be reproduced on close reading.
@@ -116,8 +118,14 @@ def classify(
 
 def _user_message(unit: dict, findings: list[dict]) -> str:
     fence = lang_fence(unit["path"])
-    numbered = "\n".join(
-        f"[{i}] {f['file']} L{f['line_range']} {f['category']}/{f['severity']}: {f['description']}"
+    # The rationale must be on the ballot. Without it the voices see only the
+    # claim and never the argument, so a finding whose own rationale retracts it
+    # ("re-reading: this is actually correct") still collects two KEEP votes and
+    # is promoted to blocking. Observed exactly that on a real run.
+    numbered = "\n\n".join(
+        f"[{i}] {f['file']} L{f['line_range']} {f['category']}/{f['severity']}: "
+        f"{f['description']}"
+        + (f"\n    Reasoning given: {f['rationale']}" if f.get("rationale") else "")
         for i, f in enumerate(findings)
     )
     return (

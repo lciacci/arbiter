@@ -6,7 +6,9 @@ language-agnostic — the fence label is the only language-specific input.
 
 from __future__ import annotations
 
-from .client import call_tool
+from pathlib import Path
+
+from .client import call_tool_verified
 from .findings import FINDING_SCHEMA, validate
 from .lang import lang_fence
 
@@ -25,6 +27,8 @@ Pay equal attention to correctness bugs and security bugs. Specifically watch fo
 - Silent error suppression that violates the declared return type.
 - Missing branches: what happens when the input is empty, None, or unexpected?
 - Failure modes that a caller could read as success — a guard that exits non-zero on an internal error, a check that returns a default when it cannot actually verify the thing it checks. Failing open is worse than failing.
+
+Before reporting an injection-class finding (SQL injection, path traversal, command injection, XSS), establish that untrusted input actually reaches the sink. Trace it: is there a request handler, a CLI argument, a network read, a file written by someone else? Values that come from a config file the operator wrote, a hardcoded literal, or a constant defined in the same repo are not attacker-controlled, and a local CLI or build script usually has no untrusted caller at all. If you cannot name where the hostile value enters, either do not report it or report it at low severity and say in the rationale that the input path is unverified. "This would be exploitable if the argument were attacker-controlled" is not a finding unless you can show that it is.
 
 Categories: security | correctness | style
 
@@ -49,9 +53,14 @@ TOOL = {
 }
 
 
-def review(unit: dict) -> list[dict]:
-    """Review one change unit. Returns findings (rationale retained)."""
-    return validate(call_tool(SYSTEM, _user_message(unit), TOOL).get("findings", []))
+def review(unit: dict, repo: Path | None = None) -> list[dict]:
+    """Review one change unit. Returns findings (rationale retained).
+
+    With `repo`, the agent may run read-only commands to check a claim before
+    reporting it; without, it is a single forced call.
+    """
+    raw = call_tool_verified(SYSTEM, _user_message(unit), TOOL, repo)
+    return validate(raw.get("findings", []))
 
 
 def _user_message(unit: dict) -> str:

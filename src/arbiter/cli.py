@@ -26,10 +26,13 @@ from .triage import classify, vote
 from .vcs import GitError, change_units, resolve_repo
 
 
-def run_unit(unit: dict, *, skip_triage: bool = False) -> dict:
-    """Full pipeline for one file. Returns the unit with results attached."""
-    first = review(unit)
-    second = second_pass(unit, first)
+def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None) -> dict:
+    """Full pipeline for one file. Returns the unit with results attached.
+
+    `repo` enables the finders' read-only verification tool; None disables it.
+    """
+    first = review(unit, repo)
+    second = second_pass(unit, first, repo)
     merged = merge(first, second)
 
     triage_note = None
@@ -156,6 +159,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true", help="emit raw JSON instead of markdown")
     p.add_argument("--no-triage", action="store_true",
                    help="skip the triage voices; everything lands advisory (cheaper, noisier)")
+    p.add_argument("--no-verify", action="store_true",
+                   help="deny the finders the read-only shell tool (cheaper, and the "
+                        "right choice when reviewing code you do not trust)")
     args = p.parse_args(argv)
 
     load_dotenv(find_dotenv(), override=True)
@@ -186,7 +192,8 @@ def main(argv: list[str] | None = None) -> int:
         surfaces; nothing is swallowed.
         """
         try:
-            return run_unit(u, skip_triage=args.no_triage)
+            return run_unit(u, skip_triage=args.no_triage,
+                            repo=None if args.no_verify else repo)
         except Exception as e:  # noqa: BLE001 — see docstring
             return {"path": u["path"], "status": u["status"],
                     "error": f"{type(e).__name__}: {e}",

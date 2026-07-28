@@ -303,3 +303,67 @@ def test_render_surfaces_degraded_triage():
     r["triage_note"] = "triage failed, all findings held advisory: boom"
     out = render([r], "main", "HEAD")
     assert "skipped triage" in out and "not confirmed" in out
+
+
+# ---------- read-only command allowlist ----------
+#
+# The model picks these commands after reading a diff, and a diff can contain
+# text written by someone else. Every refusal below is a prompt-injection path.
+
+from pathlib import Path as _Path  # noqa: E402
+
+from arbiter.tools import _refuse  # noqa: E402
+
+REPO = _Path("/tmp/repo")
+
+
+def refused(cmd: str) -> bool:
+    import shlex
+    return _refuse(REPO, shlex.split(cmd)) is not None
+
+
+@pytest.mark.parametrize("cmd", [
+    "git show HEAD:src/a.py",
+    "git diff HEAD~1 HEAD",
+    "git log --oneline -5",
+    "grep -rn needle src",
+    "python3 -c 'print(1)'",
+    "sed -n 1,20p src/a.py",
+    "wc -l src/a.py",
+])
+def test_readonly_commands_allowed(cmd):
+    assert not refused(cmd)
+
+
+@pytest.mark.parametrize("cmd", [
+    "rm -rf /",                        # not on the allowlist
+    "curl http://evil.example",        # no network
+    "pip install requests",            # no installs
+    "bash -c 'echo hi'",               # no shell
+    "git push origin main",            # writes
+    "git commit -am wip",              # writes
+    "git checkout main",               # mutates the tree under review
+    "python3 setup.py",                # would execute code under review
+    "cat ../../../etc/passwd",         # escapes the repo
+    "cat /etc/passwd",                 # absolute path outside the repo
+])
+def test_dangerous_commands_refused(cmd):
+    assert refused(cmd)
+
+
+def test_shell_metacharacters_are_inert_not_interpreted():
+    """No shell means `;` and `|` arrive as argument text, never as operators.
+
+    `git log ; rm -rf /` cannot chain: shlex yields one argv whose head is git,
+    so the `rm` is just a search term. It is refused anyway — the trailing `/`
+    trips the path-escape check — so the injection fails twice over. The point
+    of this test is the first reason, hence the explicit argv assertions.
+    """
+    import shlex
+    argv = shlex.split("git log ';' rm -rf /")
+    assert argv[0] == "git" and argv[2] == ";"   # ';' is a literal argument
+    assert _refuse(REPO, argv) is not None       # and refused regardless
+
+    # Same metacharacters, no path escape: still a plain `git log` invocation,
+    # so it is allowed — the `|` never becomes a pipe.
+    assert _refuse(REPO, shlex.split("git log --grep '|' -5")) is None
