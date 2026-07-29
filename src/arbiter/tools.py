@@ -1,4 +1,4 @@
-"""Typed, read-only inspection tools the review agents can call.
+r"""Typed, read-only inspection tools the review agents can call.
 
 Why these exist: agents that can only reason about what git does miss defects
 that agents which *run git and look* catch. Verification is worth having.
@@ -210,7 +210,7 @@ def _git(repo: Path, *args: str) -> str:
     """
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=repo, capture_output=True, text=True,
+            ["git", *args], cwd=repo, capture_output=True, text=True, check=False,
             timeout=TIMEOUT_SECONDS, shell=False,
         )
     except subprocess.TimeoutExpired:

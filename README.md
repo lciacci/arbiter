@@ -104,8 +104,9 @@ gates — it is model output, and the safe direction is to stop.
 The reviewer and second pass can run **read-only** commands to check a claim
 before reporting it — run git to see what a diff really contains, grep for a
 symbol's other uses, evaluate an expression. This is on by default and it is the
-single change that most improved finding quality: on its first run with the tool
-enabled it found two allowlist bypasses in its own newly-written security code.
+single change that most improved finding quality: on its first run with any
+inspection tool at all — the earlier shell version, since replaced — it found
+two allowlist bypasses in its own newly-written security code.
 
 The model chooses what to inspect after reading a diff, and a diff can contain
 text written by someone else, so this is a prompt-injection surface.

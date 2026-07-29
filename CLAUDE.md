@@ -2,13 +2,17 @@
 
 Project-specific guidance for Claude Code working in this repo.
 
-<!-- bin/tessera-new-project fills arbiter and standard. Fill the
-     remaining {{PROJECT_DESCRIPTION}} and {{COMMANDS}} by hand; edit anything
-     below to fit the project. -->
-
 ## What this is
 
-{{PROJECT_DESCRIPTION}}
+A CLI that runs an adversarial code review over a git ref range: reviewer →
+independent second pass → two-voice KEEP/DROP/UNSURE triage → blocking/advisory
+output, exiting 1 on a high or critical blocking finding so it can gate a hook.
+Positioning is **cheap and portable**, explicitly not "better than
+`/code-review`" — the measurements do not support that and should not be
+oversold.
+
+`docs/STATE.md` for how it got here and what has been measured,
+`docs/NEXT_SESSION.md` to pick it back up.
 
 - **Tessera profile:** `standard` (see `.tessera/project.yml`).
 
@@ -101,4 +105,15 @@ final `exit 0` to `exit 1` — not before, since a gate that cries wolf gets byp
 
 ## Commands
 
-{{COMMANDS}}
+```bash
+uv sync                          # install, including the dev group
+uv run pytest -q                 # the whole suite; no API calls, ~1s
+uv run ruff check src tests      # lint; config in pyproject.toml
+uv run arbiter --help
+uv run arbiter --base main       # review the current branch — THIS COSTS MONEY
+```
+
+`arbiter` makes real API calls and there is no cost cap. A run is cents to a few
+dollars depending on how much code it is pointed at — see the cost table in
+`README.md`. Don't run it speculatively; `--path` is the lever for scoping, and
+`--no-verify` roughly halves a run.

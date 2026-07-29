@@ -22,4 +22,16 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.14.0",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# E501 is off because the prose in docstrings carries the reasoning here and
+# reflowing it to fit a column would cost more than it buys. Everything else in
+# the default set stays on.
+extend-select = ["I", "UP", "B"]
+ignore = ["E501"]

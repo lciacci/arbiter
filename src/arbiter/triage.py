@@ -164,7 +164,7 @@ def _salvage(raw: str) -> list[dict]:
     from two different votes.
     """
     out: list[dict] = []
-    for chunk in re.findall(r"\{[^{}]*\}", raw, re.S):
+    for chunk in re.findall(r"\{[^{}]*\}", raw, re.DOTALL):
         i = re.search(r'"index"\s*:\s*(\d+)', chunk)
         v = re.search(r'"vote"\s*:\s*"(keep|drop|unsure)"', chunk)
         if i and v:

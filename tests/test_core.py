@@ -126,7 +126,7 @@ def test_shell_is_reviewable_by_default():
 
 # ---------- path filtering ----------
 
-from arbiter.vcs import matches_any  # noqa: E402
+from arbiter.vcs import matches_any
 
 
 @pytest.mark.parametrize(
@@ -148,7 +148,7 @@ def test_matches_any(path, patterns, expected):
 
 # ---------- git name-status parsing ----------
 
-from arbiter.vcs import parse_name_status  # noqa: E402
+from arbiter.vcs import parse_name_status
 
 
 def test_parse_name_status_plain():
@@ -181,7 +181,7 @@ def test_parse_name_status_ignores_malformed_lines():
 
 # ---------- fail-loud contract ----------
 
-from arbiter.client import AgentError, call_tool  # noqa: E402
+from arbiter.client import AgentError, call_tool
 
 
 class _FakeResp:
@@ -246,7 +246,7 @@ def test_dotfiles_are_extensionless():
 # The load-bearing promise of this tool is that an unreviewed file never reads
 # as a clean one. Nothing asserted that until these.
 
-from arbiter.cli import exit_code, render  # noqa: E402
+from arbiter.cli import exit_code, render
 
 
 def ok(path="a.py", blocking=(), advisory=()):
@@ -345,9 +345,9 @@ def test_render_surfaces_degraded_triage():
 # tests pin the validation, and the block below pins the old exploits as
 # unrepresentable rather than merely refused.
 
-from pathlib import Path as _Path  # noqa: E402
+from pathlib import Path as _Path
 
-from arbiter.tools import TOOL_NAMES, ToolError, _path, _ref, dispatch  # noqa: E402
+from arbiter.tools import TOOL_NAMES, ToolError, _path, _ref, dispatch
 
 REPO = _Path("/tmp/repo")
 
@@ -429,8 +429,9 @@ def test_attached_value_options_are_not_valid_paths_or_refs(attached):
 
 def test_search_pattern_starting_with_dash_is_not_an_option():
     """The pattern goes through `-e`, so it cannot be read as a flag."""
-    from arbiter.tools import _search
     import inspect
+
+    from arbiter.tools import _search
     src = inspect.getsource(_search)
     assert '"-e"' in src and '"-F"' in src
 
@@ -441,7 +442,7 @@ def test_search_pattern_starting_with_dash_is_not_an_option():
 # invalid JSON, because rationales quote shell globs. Every vote then fell to the
 # UNSURE default, three runs reported 0 blocking, and two diagnoses were wrong.
 
-from arbiter.triage import _coerce_votes  # noqa: E402
+from arbiter.triage import _coerce_votes
 
 
 def test_coerce_passes_through_a_proper_list():
@@ -499,6 +500,7 @@ def test_coerce_does_not_stitch_pairs_across_two_votes():
 def test_git_diff_honours_merge_base_flag():
     """Three-dot is branch-review semantics; two-dot answers 'what did this commit do'."""
     import inspect
+
     from arbiter.tools import dispatch
     src = inspect.getsource(dispatch)
     assert '".." if params.get("merge_base") is False else "..."' in src
@@ -528,10 +530,10 @@ def test_hallucinated_tool_name_is_still_a_plain_refusal():
 # could be diffed against one commit and later files against another, and a
 # finder's verification call resolved HEAD later still.
 
-import subprocess  # noqa: E402
+import subprocess
 
-from arbiter.cli import ref_label  # noqa: E402
-from arbiter.vcs import resolve_ref  # noqa: E402
+from arbiter.cli import ref_label
+from arbiter.vcs import resolve_ref
 
 
 def _repo(tmp_path):
@@ -604,3 +606,47 @@ def test_branch_sharing_a_name_with_a_file_still_diffs(tmp_path):
     from arbiter.vcs import changed_files
     changed = changed_files(repo, "feature", "HEAD", rng=["feature", "HEAD"])
     assert ("M", "a.py", "a.py") in changed
+
+
+# ---------- the ballot must not truncate ----------
+#
+# The ballot was built with zip(merged, rv, av), which stops at the shortest.
+# classify() indexes with an "unsure" fallback, so a short vote list still tiers
+# every finding — but the ballot silently omitted exactly the findings whose
+# votes went missing. The instrument dropped the evidence it exists to show,
+# and the stderr vote-mix counter reads from it. Found by ruff (B905).
+
+from arbiter.cli import run_unit
+
+
+def test_ballot_has_a_row_per_finding_even_when_votes_are_short(monkeypatch):
+    three = [f(line=10), f(line=100), f(line=200)]
+    monkeypatch.setattr("arbiter.cli.review", lambda unit, repo: three)
+    monkeypatch.setattr("arbiter.cli.second_pass", lambda unit, first, repo: [])
+    # One vote for three findings — the real shape of a partially salvaged ballot.
+    monkeypatch.setattr(
+        "arbiter.cli.vote",
+        lambda unit, merged, role: [{"index": 0, "vote": "keep", "rationale": "r"}],
+    )
+
+    result = run_unit({"path": "a.py", "status": "M"}, repo=None)
+
+    assert len(result["ballot"]) == 3, "zip() would have truncated this to 1"
+    assert [b["reviewer"] for b in result["ballot"]] == ["keep", "missing", "missing"]
+    # classify still tiers all three, which is why this went unnoticed.
+    assert len(result["blocking"]) + len(result["advisory"]) + len(result["dropped"]) == 3
+
+
+def test_ballot_distinguishes_an_absent_vote_from_an_unsure_one(monkeypatch):
+    """Both tier advisory. One means the voice abstained, one means it was never
+    heard — conflating them is what cost two sessions of wrong diagnoses."""
+    two = [f(line=10), f(line=100)]
+    monkeypatch.setattr("arbiter.cli.review", lambda unit, repo: two)
+    monkeypatch.setattr("arbiter.cli.second_pass", lambda unit, first, repo: [])
+    monkeypatch.setattr(
+        "arbiter.cli.vote",
+        lambda unit, merged, role: [{"index": 0, "vote": "unsure", "rationale": "r"}],
+    )
+
+    ballot = run_unit({"path": "a.py", "status": "M"}, repo=None)["ballot"]
+    assert [b["reviewer"] for b in ballot] == ["unsure", "missing"]

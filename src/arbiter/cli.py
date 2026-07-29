@@ -13,9 +13,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
-
 from anthropic import AnthropicError
+from dotenv import find_dotenv, load_dotenv
 
 from .client import AgentError, require_python, usage
 from .findings import gates_exit, merge, severity_rank
@@ -48,14 +47,26 @@ def run_unit(unit: dict, *, skip_triage: bool = False, repo: Path | None = None)
             # undiagnosable: two sessions were spent guessing why everything
             # landed advisory, with the deciding evidence computed and dropped
             # on the floor each time.
-            ballot = [
-                {"finding": f.get("description", "")[:100],
-                 "severity": f.get("severity"),
-                 "reviewer": r["vote"], "arbiter": a["vote"],
-                 "reviewer_why": r.get("rationale", ""),
-                 "arbiter_why": a.get("rationale", "")}
-                for f, r, a in zip(merged, rv, av)
-            ]
+            # Indexed like classify(), NOT zipped. zip truncates to the shortest
+            # list, so a run where votes went missing produced a ballot that
+            # silently omitted exactly those findings — the instrument dropping
+            # the evidence it exists to show. Found by ruff (B905).
+            ballot = []
+            for i, f in enumerate(merged):
+                r = rv[i] if i < len(rv) else {}
+                a = av[i] if i < len(av) else {}
+                ballot.append({
+                    "finding": f.get("description", "")[:100],
+                    "severity": f.get("severity"),
+                    # "missing", not classify's "unsure" fallback: both tier the
+                    # finding advisory, but one means the voice abstained and the
+                    # other means it was never heard. Conflating them is what cost
+                    # two sessions of wrong diagnoses.
+                    "reviewer": r.get("vote", "missing"),
+                    "arbiter": a.get("vote", "missing"),
+                    "reviewer_why": r.get("rationale", ""),
+                    "arbiter_why": a.get("rationale", ""),
+                })
         except (AgentError, AnthropicError) as e:
             # Triage failing must not delete findings two completed calls
             # already paid for. Degrade to all-advisory — the same fallback
@@ -125,10 +136,10 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None)
     out = [
         f"# arbiter — `{head}` vs `{base}`",
         "",
-        f"{reviewed} file(s) reviewed · "
-        f"**{len(blocking)} blocking** ({sum(gates_exit(f) for _, f in blocking)} "
-        f"high or critical — those alone exit 1) · "
-        f"{len(advisory)} advisory · {dropped} dropped by triage",
+        (f"{reviewed} file(s) reviewed · "
+         f"**{len(blocking)} blocking** ({sum(gates_exit(f) for _, f in blocking)} "
+         f"high or critical — those alone exit 1) · "
+         f"{len(advisory)} advisory · {dropped} dropped by triage"),
         "",
     ]
     if errored:
@@ -176,8 +187,8 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None)
         out += [
             "---",
             "",
-            f"_{spend['calls']} model calls · {spend['input']:,} in / "
-            f"{spend['output']:,} out tokens · ~${spend['usd']:.2f} at list price._",
+            (f"_{spend['calls']} model calls · {spend['input']:,} in / "
+             f"{spend['output']:,} out tokens · ~${spend['usd']:.2f} at list price._"),
             "",
         ]
 

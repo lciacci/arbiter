@@ -12,7 +12,6 @@ Its output is additive. It never removes a first-pass finding; triage does that.
 from __future__ import annotations
 
 import json
-
 from pathlib import Path
 
 from .client import call_tool_verified
