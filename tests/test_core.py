@@ -542,3 +542,33 @@ def test_resolve_ref_does_not_invent_a_commit_for_a_bad_ref(tmp_path):
 def test_ref_label_shows_what_a_name_resolved_to():
     assert ref_label("HEAD", "a1b2c3d4e5f6") == "HEAD (a1b2c3d4)"
     assert ref_label("a1b2c3d4e5f6", "a1b2c3d4e5f6") == "a1b2c3d4e5f6"
+
+
+def test_ref_label_does_not_annotate_a_sha_with_itself():
+    """Found by arbiter reviewing this commit. The equality guard was too narrow.
+
+    resolve_ref always returns the full 40-char SHA, so an abbreviated `--base`
+    made ref != sha and produced `a1b2c3d4 (a1b2c3d4)`.
+    """
+    assert ref_label("a1b2c3d4", "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678") == "a1b2c3d4"
+
+
+def test_branch_sharing_a_name_with_a_file_still_diffs(tmp_path):
+    """Without a trailing `--`, git refuses to guess and the whole run dies.
+
+    `git diff --name-status feature HEAD` where `feature` is both a branch and
+    a path is "ambiguous argument", exit 128 — a GitError that reaches main()
+    as exit 2 on a branch that is entirely valid. Verified by running it: git
+    errors rather than silently taking the ref as a pathspec, so the two-arg
+    form fails loudly, never quietly.
+    """
+    repo, git = _repo(tmp_path)
+    git("branch", "feature")
+    (repo / "feature").write_text("decoy\n")   # a file with the branch's name
+    (repo / "a.py").write_text("x = 2\n")
+    git("add", "-A")
+    git("commit", "-qm", "two")
+
+    from arbiter.vcs import changed_files
+    changed = changed_files(repo, "feature", "HEAD", rng=["feature", "HEAD"])
+    assert ("M", "a.py", "a.py") in changed

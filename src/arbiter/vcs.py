@@ -94,7 +94,13 @@ def changed_files(
     `rng` lets a caller reuse an already-computed range instead of paying for
     the two git subprocesses in _range_args again.
     """
-    out = _git(repo, "diff", "--name-status", *(rng or _range_args(repo, base, head)))
+    # Trailing `--` so every preceding token is read as a revision. Git refuses
+    # to guess: a branch that shares its name with a file in the tree is
+    # "ambiguous argument 'x': both revision and filename", exit 128, and the
+    # whole run dies at exit 2 on a branch that is perfectly valid. Git does not
+    # silently take it as a pathspec, so this is a false-failure fix, not a
+    # false-pass one.
+    out = _git(repo, "diff", "--name-status", *(rng or _range_args(repo, base, head)), "--")
     return parse_name_status(out)
 
 

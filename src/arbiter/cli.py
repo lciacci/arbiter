@@ -102,8 +102,12 @@ def ref_label(ref: str, sha: str) -> str:
 
     The report is meant to be pasted into a PR, where "HEAD" alone is not a
     statement anyone can check later.
+
+    `startswith`, not equality: resolve_ref returns the full 40-char SHA, so a
+    caller who passed an abbreviation got `a1b2c3d4 (a1b2c3d4)` — the SHA
+    annotating itself.
     """
-    return ref if ref == sha else f"{ref} ({sha[:8]})"
+    return ref if sha.startswith(ref) else f"{ref} ({sha[:8]})"
 
 
 def render(results: list[dict], base: str, head: str, spend: dict | None = None) -> str:
