@@ -90,13 +90,52 @@ is an argument for running both, not for picking one.
 1. **Done twice — see Round 2 above.** The remaining unmeasured thing is whether
    the typed-tool rewrite changed finding quality, since every head-to-head so
    far used the old shell tool or none.
+
+   **Partial answer, 2026-07-28, two runs on the typed-tool build** — arbiter on
+   its own diff, and on conclave's `harness/t1t3-matched-instrument`. Three
+   blocking findings between them, each verified by hand before acting:
+
+   - *arbiter, low/correctness:* `ref_label` annotated an abbreviated SHA with
+     itself. **Real**, fixed.
+   - *conclave, medium/correctness:* the watchdog subshell leaks its `sleep`
+     child. **Observation right, consequence wrong.** It claimed the orphan goes
+     on to `kill -KILL` the next aider invocation and fake an rc=137. It cannot:
+     `kill "$wd"` terminates the subshell, so the kill sequence dies with it.
+     Verified by running a reduced copy — neither watchdog stage fires. The real
+     defect is a leaked `sleep` per task, cosmetic.
+   - *conclave, low/correctness:* `env -C` called non-portable. True only for
+     macOS <13; works on the actual mac (26.5.2) and on GNU coreutils ≥8.28.
+     Inert.
+
+   So: the reported-defects-are-reliable / worked-examples-are-not pattern held
+   again, and **the finder is better at locating than at concluding**. Verifying
+   the repro before acting caught the one wrong consequence both times.
+
+   The load-bearing result is about the *tiering*, not the finding quality:
+   three of three blocking findings were not worth stopping a commit for.
+   Triage votes on whether a finding is real and nothing consulted severity
+   afterwards, so `low` rejected as hard as `critical`. Fixed —
+   `findings.gates_exit`, exit 1 now needs high or critical, unclassifiable
+   severity gates rather than passes. This had to be settled before the git
+   hook (item 2 in NEXT_SESSION): a gate that cries wolf gets bypassed.
 2. **Cost, first real measurement:** 2 shell files in tessera →
    **24 model calls, 185k in / 12k out, $0.73**. That is ~12 calls per file, not
    4 — verification triples the call count, since every turn resends the
    conversation. ~$0.37/file, so a 20-file branch is ~$7. Earlier input-only
-   estimates were 9x low. Second point, same shape: **7 Python files → $2.74**,
-   ~$0.39/file. What the 3x buys is filtering, not volume — same finding count,
-   ~3x as many dropped by triage.
+   estimates were 9x low. What the 3x buys is filtering, not volume — same
+   finding count, ~3x as many dropped by triage. Four points now:
+
+   | repo | scope | cost | per file |
+   |---|---|--:|--:|
+   | tessera | 2 shell files | $0.73 | $0.37 |
+   | tessera | 7 Python files | $2.74 | $0.39 |
+   | arbiter | 3 large Python files | $1.54 | $0.51 |
+   | conclave | 1 shell file, 287 lines | $0.79 | $0.79 |
+
+   Per-file cost is **not** stable — it ranges 2x with file size, so estimating
+   in "files changed" is wrong twice over: only reviewable files cost anything
+   (conclave changed 114 files, 113 were logs and result data, one was
+   reviewed), and their size drives the rest.
 3. **Tessera seams.** `docs/FINDINGS.md` exists and is empty — that is the S5
    feedback seam. And the canonical contract
    (`~/claude/tessera/docs/contracts/three-project-cohesion.md`) still gates S4

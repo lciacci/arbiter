@@ -261,6 +261,38 @@ def err(path="b.py", error="AgentError: no tool_use block"):
             "blocking": [], "advisory": [], "dropped": [], "triage_note": None}
 
 
+def test_low_severity_blocking_does_not_reject_the_commit():
+    """Measured: 3 of 3 blocking findings across two runs were not worth stopping for."""
+    assert exit_code([ok(blocking=[f(severity="low")])]) == 0
+    assert exit_code([ok(blocking=[f(severity="medium")])]) == 0
+
+
+def test_high_and_critical_blocking_still_reject():
+    assert exit_code([ok(blocking=[f(severity="high")])]) == 1
+    assert exit_code([ok(blocking=[f(severity="critical")])]) == 1
+
+
+@pytest.mark.parametrize("sev", [None, "", "  ", "sev-9", 3, ["high"]])
+def test_unclassifiable_severity_gates_rather_than_passes(sev):
+    """Fail-closed. `_SEV_RANK.get(sev, 0)` would rank it lowest and wave it through.
+
+    The severity string is model output. This codebase's recurring defect is a
+    fallback a gate reads as "pass", so anything unrecognised must exit 1.
+    """
+    finding = {**f(), "severity": sev}
+    assert exit_code([ok(blocking=[finding])]) == 1
+
+
+def test_severity_gating_is_case_and_whitespace_insensitive():
+    assert exit_code([ok(blocking=[f(severity=" LOW ")])]) == 0
+    assert exit_code([ok(blocking=[f(severity="Critical")])]) == 1
+
+
+def test_a_failed_file_still_wins_over_a_non_gating_finding():
+    """Exit 0 would say "reviewed, nothing to stop for" about a file never reviewed."""
+    assert exit_code([ok(blocking=[f(severity="low")]), err()]) == 3
+
+
 def test_blocking_outranks_failure_in_exit_code():
     """A partial failure must not downgrade a confirmed blocking finding.
 

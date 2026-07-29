@@ -58,6 +58,30 @@ def severity_rank(finding: dict) -> int:
     return -_SEV_RANK.get(finding.get("severity", ""), 0)
 
 
+# Severities that are worth reporting but not worth stopping a commit for.
+_ADVISORY_SEVERITIES = frozenset({"medium", "low"})
+
+
+def gates_exit(finding: dict) -> bool:
+    """Whether a blocking-tier finding should also fail the process.
+
+    Triage votes on whether a finding is *real*, never on whether it is worth
+    stopping for, and nothing consulted severity afterwards. Measured over two
+    runs, three of three blocking findings were low-severity or cosmetic: a
+    label that annotated a SHA with itself, a portability nit about a macOS
+    version not in use, and a leaked `sleep`. A hook gating on exit 1 would have
+    rejected commits over all three, and a gate that cries wolf gets bypassed.
+
+    Unrecognised or missing severity gates. The string comes from a model, and
+    this codebase's recurring defect is a fallback a gate reads as "pass". The
+    safe direction is to stop on something we could not classify, not wave it
+    through. `_SEV_RANK.get(sev, 0)` is deliberately *not* reused here — its
+    unknown-sorts-last default is right for ordering and backwards for gating.
+    """
+    sev = finding.get("severity")
+    return not isinstance(sev, str) or sev.strip().lower() not in _ADVISORY_SEVERITIES
+
+
 def merge(
     reviewer_findings: list[dict],
     arbiter_findings: list[dict],

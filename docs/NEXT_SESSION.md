@@ -33,15 +33,20 @@ on by default and costs roughly 3× a bare run.
 
 **Highest-value next steps, in order:**
 
-1. **Use it on a real branch** in `tessera` or `conclave` and judge whether the
-   blocking tier is short enough to actually read. It has had one run against a
-   repo that is not itself. It has been reviewed harder than it has been used,
-   and that is the wrong ratio. Safe to point at a repo with a live session in
+1. **Keep using it on real branches.** Done once more on 2026-07-28 against
+   conclave's `harness/t1t3-matched-instrument` — see `STATE.md` item 1 for what
+   it found and what it got wrong. The blocking tier *is* short enough to read;
+   the problem was that it blocked on things not worth blocking for, now fixed.
+   Still only two foreign repos. Safe to point at a repo with a live session in
    it: refs are pinned to SHAs at startup, and only committed state is read.
-2. **Wire it as a git hook.** The exit codes were designed for it (1 blocking,
-   2 could-not-run, 3 partial failure) and it has never been run that way.
-3. **Re-measure quality since the typed-tool rewrite.** Every head-to-head so
-   far used the old shell tool or none, so the current standing is unmeasured.
+2. **Wire it as a git hook.** The exit codes were designed for it (1 blocking at
+   high or critical, 2 could-not-run, 3 partial failure) and it has never been
+   run that way. Unblocked now that severity gates the exit code — before that
+   it would have rejected commits over cosmetics on its first day.
+3. **Re-measure quality since the typed-tool rewrite** — partially done, see
+   STATE item 1. Two runs, three blocking findings, one wrong in its
+   consequence. No head-to-head against `/code-review` on the typed-tool build
+   yet, so the comparative standing is still unmeasured.
 
 **Two things to be careful about.**
 

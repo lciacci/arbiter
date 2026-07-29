@@ -78,14 +78,24 @@ Reviews `.py .sh .bash .zsh .ts .tsx .js .jsx .sql` by default. `--ext` override
 
 | code | meaning |
 |-----:|---------|
-| 0 | reviewed clean |
-| 1 | blocking findings — reject |
+| 0 | nothing worth stopping for |
+| 1 | blocking findings at high or critical — reject |
 | 2 | could not run at all (bad ref, not a repo) |
 | 3 | ran, but some file failed to review — **not** a pass |
 
 Blocking is checked before failures, so a partial failure can never mask a
 confirmed blocking finding behind a softer code. 3 is distinct from 2 so a hook
 can tell "reviewed nine of ten files" from "arbiter never started".
+
+**Severity gates as well as agreement.** Triage votes on whether a finding is
+*real*, never on whether it is worth stopping for, so `low` used to reject a
+commit exactly as hard as `critical`. Measured over two runs, three of three
+blocking findings were cosmetic or inapplicable — a label that annotated a SHA
+with itself, a portability nit about a macOS version not in use, and a leaked
+`sleep` process. As a hook that rejects all three, and a gate that cries wolf
+gets bypassed. Blocking findings below high are still reported in full; they
+just do not fail the process. A severity that cannot be recognised at all
+gates — it is model output, and the safe direction is to stop.
 
 ## Verification
 
@@ -151,18 +161,26 @@ Every run reports its own usage, to stderr and at the foot of the report:
 <N> model calls · <in> in / <out> out tokens · ~$<estimate>
 ```
 
-Two measured data points:
+Four measured runs, all with verification on:
 
-| scope | cost | per file |
-|---|---|---|
-| 2 shell files (24 model calls, 185k in / 12k out) | **$0.73** | ~$0.37 |
-| 7 Python files | **$2.74** | ~$0.39 |
+| repo | scope | calls | cost | per file |
+|---|---|--:|--:|--:|
+| tessera | 2 shell files | 24 | $0.73 | $0.37 |
+| tessera | 7 Python files | — | $2.74 | $0.39 |
+| arbiter | 3 large Python files | 34 | $1.54 | $0.51 |
+| conclave | 1 shell file, 287 lines | 12 | $0.79 | **$0.79** |
 
-So a 20-file branch lands near $7. Verification is most of that; it triples the
-call count because every turn resends the conversation. What that 3× buys is
+**Per-file cost is not stable — it ranges 2× with file size**, so "files changed"
+is the wrong unit to estimate in. A 20-file branch is somewhere between $7 and
+$15 depending on how big those files are. Note also that only *reviewable* files
+cost anything: the conclave branch changed 114 files, but 113 were logs and
+result data, so one file was reviewed and the run cost $0.79.
+
+Verification is most of the spend; it triples the call count (~12 calls per file
+rather than 4) because every turn resends the conversation. What that 3× buys is
 **filtering, not volume** — the same number of findings, but roughly three times
-as many of them dropped by triage. Your figure depends entirely on how much code
-you point it at, so run it and read the line rather than trusting these.
+as many of them dropped by triage. Run it and read the line rather than trusting
+these.
 
 Pricing is indicative list price (`PRICE_IN_PER_MTOK` in `client.py`) and will
 drift; treat it as "cents or dollars", not an invoice. Drivers, in order:

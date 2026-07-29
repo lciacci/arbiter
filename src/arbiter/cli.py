@@ -18,7 +18,7 @@ from dotenv import find_dotenv, load_dotenv
 from anthropic import AnthropicError
 
 from .client import AgentError, require_python, usage
-from .findings import merge, severity_rank
+from .findings import gates_exit, merge, severity_rank
 from .lang import DEFAULT_EXTS
 from .reviewer import review
 from .second_pass import second_pass
@@ -80,17 +80,21 @@ def exit_code(results: list[dict]) -> int:
     """Process exit status for a completed run.
 
     Strongest signal first:
-        1  blocking findings           -> reject
-        3  ran, but some file failed   -> incomplete, must not read as a pass
-        2  could not run at all        -> emitted by main() on GitError
-        0  reviewed clean
+        1  blocking findings, high or critical -> reject
+        3  ran, but some file failed           -> incomplete, must not read as a pass
+        2  could not run at all                -> emitted by main() on GitError
+        0  nothing worth stopping for
 
     Blocking is checked before failures so a partial failure can never mask a
     confirmed blocking finding behind a softer code. 3 is distinct from 2 so a
     hook can tell "reviewed nine of ten files" from "arbiter never started" —
     those warrant different responses.
+
+    Severity gates as well as agreement — see findings.gates_exit for why, and
+    for why an unclassifiable severity still exits 1. Blocking findings below
+    that bar are still reported in full; they just do not reject the commit.
     """
-    if any(r["blocking"] for r in results):
+    if any(gates_exit(f) for r in results for f in r["blocking"]):
         return 1
     if any(r.get("error") for r in results):
         return 3
@@ -122,7 +126,9 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None)
         f"# arbiter — `{head}` vs `{base}`",
         "",
         f"{reviewed} file(s) reviewed · "
-        f"**{len(blocking)} blocking** · {len(advisory)} advisory · {dropped} dropped by triage",
+        f"**{len(blocking)} blocking** ({sum(gates_exit(f) for _, f in blocking)} "
+        f"high or critical — those alone exit 1) · "
+        f"{len(advisory)} advisory · {dropped} dropped by triage",
         "",
     ]
     if errored:
