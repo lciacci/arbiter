@@ -1,7 +1,8 @@
-# Where this is, 2026-07-28 (updated after round 2)
+# Where this is, 2026-07-28 (updated after the first foreign-repo runs)
 
-Written at a pause. Everything below is committed and pushed to
-`github.com/lciacci/arbiter`. Nothing is half-applied.
+Written at a pause. Everything below is committed. Nothing is half-applied.
+The last three commits (`66be55b`, `6e6a80a`, `eef0cdc`) are **local only** —
+`github.com/lciacci/arbiter` is three behind.
 
 ## What arbiter is
 
@@ -23,7 +24,20 @@ distinction is load-bearing and the measurements below support it.
 | `d91e4c7` | six defects `/code-review` found that arbiter had twice called clean |
 | `c5f6f78` | read-only shell for the finders; rationale on the triage ballot; threat-model context |
 | `48283aa` | two allowlist bypasses + two API-protocol bugs, found by arbiter's first verified run |
-| (this) | usage metering, README |
+| `1c7722a` | usage metering, README |
+| `e60d3e5` | first foreign-repo run and the real cost per file |
+| `ff817fd` | separate bounding from undermining in triage; retain the ballot |
+| `fbf3829` | recover malformed triage ballots instead of silently voting UNSURE |
+| `7540e9b` | the triage bug and the two wrong diagnoses before it |
+| `049aa51` | an RCE in the allowlist closed; ballot salvage hardened |
+| `443c2c0` | **the shell allowlist replaced with typed tools** |
+| `294645d` | merge-base control, honest dispatch errors, an unflattering threat model |
+| `cd4a52e` | round 2 and the security-boundary result |
+| `56d94fe` | the S5 findings channel opened |
+| `b018a91` | session-2 kickoff prompt |
+| `66be55b` | base/head pinned to SHAs so a live repo cannot move mid-run |
+| `6e6a80a` | `ref_label` on abbreviated SHAs; the two-arg diff disambiguated |
+| `eef0cdc` | **severity gates the exit code** — see item 1 |
 
 ## The measurement that matters
 
@@ -136,12 +150,15 @@ is an argument for running both, not for picking one.
    in "files changed" is wrong twice over: only reviewable files cost anything
    (conclave changed 114 files, 113 were logs and result data, one was
    reviewed), and their size drives the rest.
-3. **Tessera seams.** `docs/FINDINGS.md` exists and is empty — that is the S5
-   feedback seam. And the canonical contract
-   (`~/claude/tessera/docs/contracts/three-project-cohesion.md`) still gates S4
-   on "pr-arbiter Phase 3", which is void; it should point here instead. D4
-   ("should pr-arbiter adopt `.tessera/`") is moot for pr-arbiter and answered
-   for this repo — it adopted at scaffold.
+3. **Tessera seams — both resolved, kept for the trail.** `docs/FINDINGS.md` is
+   the S5 feedback seam and is no longer empty: F-001 (the icpg-session-base
+   glob, transferred as tessera `8af9789`) and F-002 (`.tessera/` adoption,
+   which resolved D4 and re-gated S4). The contract
+   (`~/claude/tessera/docs/contracts/three-project-cohesion.md`) no longer gates
+   S4 on the void "pr-arbiter Phase 3" — updated in the same pass; S4's gate is
+   now D3 plus a stable conclave fleet. The remaining open item is the
+   observatory entry F-001 asks for: whether hook payload parsing should be a
+   shared tested helper rather than open-coded per hook.
 4. **The eight defects the workflow found are fixed; its *class* of finding is
    not covered by tests.** Rename/copy handling has unit coverage now; the
    verification loop's protocol handling does not.
@@ -210,6 +227,31 @@ shell, on the first try, for $0.73.
 
 ## What has never been run
 
-- arbiter as a git hook, despite the exit codes being designed for it.
-- A head-to-head since verification landed — the comparison that made arbiter
-  look weak predates the tool.
+- **arbiter as a git hook**, despite the exit codes being designed for it. This
+  was the right order: run it by hand first, and the first two foreign-repo runs
+  showed the gate would have fired on cosmetics. Fixed in `eef0cdc`; the hook is
+  unblocked now.
+- **A head-to-head since verification landed.** The comparison that made arbiter
+  look weak predates the tool entirely, and the typed-tool rewrite has never
+  been measured against `/code-review` on the same diff. Item 1's two runs are
+  arbiter-alone results, not comparative ones.
+- **An independent review of the current `tools.py`.** Every review that found
+  holes in the security boundary was of the *previous*, command-string design.
+
+## Fail-open, the recurring defect
+
+Not one bug, a pattern — four instances now, several written by whoever had just
+fixed the previous one. Each was defensive in intent:
+
+1. A `{}` return from a missing `tool_use` block that read as "no findings".
+2. A swallowed `GitError` in `_content_at` that read as "new file".
+3. A triage UNSURE default that turned total ballot failure into "nothing
+   blocking" — see the triage-bug section below.
+4. Nearly a fifth: `_SEV_RANK.get(sev, 0)` was the obvious thing to reuse for
+   the new severity gate in `eef0cdc`, and its unknown-sorts-last default would
+   have meant an unparseable severity passes. `findings.gates_exit` deliberately
+   does not use it.
+
+**The rule: when adding a fallback here, ask what a *gate* will conclude from
+it. If the answer is "pass", it is wrong.** This is arbiter-internal, not
+Tessera friction, so it lives here rather than in `docs/FINDINGS.md`.

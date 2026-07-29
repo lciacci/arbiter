@@ -16,7 +16,8 @@ Three agents run over each changed file:
 
 Output is two tiers. The blocking tier is meant to be short enough that you
 actually read it; the advisory tier is where the maybes go. Exit code is 1 when
-anything blocking was found, so it can gate a hook.
+a blocking finding is high or critical, so it can gate a hook without rejecting
+a commit over a cosmetic one.
 
 ## Why this exists
 
@@ -92,8 +93,9 @@ can tell "reviewed nine of ten files" from "arbiter never started".
 commit exactly as hard as `critical`. Measured over two runs, three of three
 blocking findings were cosmetic or inapplicable — a label that annotated a SHA
 with itself, a portability nit about a macOS version not in use, and a leaked
-`sleep` process. As a hook that rejects all three, and a gate that cries wolf
-gets bypassed. Blocking findings below high are still reported in full; they
+`sleep` process. As a hook, the old behaviour rejected the commit for all three,
+and a gate that cries wolf gets bypassed. Findings below high are reported in
+full and still say "blocking" in the report; they
 just do not fail the process. A severity that cannot be recognised at all
 gates — it is model output, and the safe direction is to stop.
 
@@ -129,11 +131,12 @@ committing to, and the report records the SHAs it actually read. Uncommitted
 work is never reviewed — everything comes from git, nothing from the working
 tree.
 
-**This boundary is young.** `tools.py` was rewritten on 2026-07-28 and has one
-live run behind it. Two independent reviews of the *previous* design found six
-holes between them. The argument for this one is that it removes the category —
-model input never reaches argv, no interpreter, no free text to a shell — not
-that it has been proven in use.
+**This boundary is young.** `tools.py` was rewritten on 2026-07-28 and has three
+live runs behind it, none of them adversarial. Two independent reviews of the
+*previous* design found six holes between them; **the current design has never
+been independently reviewed at all.** The argument for it is that it removes the
+category — model input never reaches argv, no interpreter, no free text to a
+shell — not that it has been proven in use.
 
 **Reviewing a PR from someone you do not trust: use `--no-verify`, or run it in
 a container.**
