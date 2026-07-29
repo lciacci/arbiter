@@ -19,7 +19,8 @@ came from `pr-arbiter`, which is now frozen as a research artifact. Positioning
 is **cheap and portable**, explicitly not "better than `/code-review`" — the
 measurements do not support that and should not be oversold.
 
-**State.** Working, pushed, clean at `github.com/lciacci/arbiter`. 247 tests.
+**State.** Working, pushed, clean at `github.com/lciacci/arbiter`. 249 tests,
+`uv run ruff check src tests` clean.
 The finders can run typed read-only inspection tools (`read_file`, `search`,
 `git_diff`, `git_log`) to check claims before reporting; that verification is
 on by default and costs roughly 3× a bare run.

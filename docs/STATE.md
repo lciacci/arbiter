@@ -211,6 +211,24 @@ outright, which is the precision lever the architecture exists for.
 **Transferable lesson: instrument before hypothesising.** Two rounds of
 reasoning cost more than the one commit that logged the evidence.
 
+### The instrument had the same bug, twice over (`db50d16`)
+
+Adding ruff turned up B905 on the ballot: it was built with
+`zip(merged, rv, av)`, which truncates to the shortest list. `classify()`
+indexes with an `"unsure"` fallback so every finding is still tiered — but the
+ballot silently omitted the findings whose votes went missing, and the stderr
+vote-mix counter reads from the ballot.
+
+So the diagnostic added to catch missing votes under-reported precisely when
+votes went missing. Third instance of this shape in the same function. A missing
+vote is now recorded as `"missing"` rather than borrowing classify's `"unsure"`:
+both tier the finding advisory, but one means the voice abstained and the other
+means it was never heard, and conflating them is what made the original bug take
+two sessions.
+
+**Worth generalising: the instrument needs the same scrutiny as the thing it
+measures.** Nothing reviewed the ballot because it was "only logging".
+
 ## First run against a foreign repo
 
 Done, and it found a real bug. In `tessera`'s
