@@ -52,14 +52,45 @@ on by default and costs roughly 3× a bare run.
    the problem was that it blocked on things not worth blocking for, now fixed.
    Still only two foreign repos. Safe to point at a repo with a live session in
    it: refs are pinned to SHAs at startup, and only committed state is read.
-2. **Wire it as a git hook.** The exit codes were designed for it (1 blocking at
-   high or critical, 2 could-not-run, 3 partial failure) and it has never been
-   run that way. Unblocked now that severity gates the exit code — before that
-   it would have rejected commits over cosmetics on its first day.
-3. **Re-measure quality since the typed-tool rewrite** — partially done, see
+2. **Re-measure quality since the typed-tool rewrite** — partially done, see
    STATE item 1. Two runs, three blocking findings, one wrong in its
    consequence. No head-to-head against `/code-review` on the typed-tool build
    yet, so the comparative standing is still unmeasured.
+3. **Get a run cheap and fast enough to be worth automating.** Today a run is
+   1–2 minutes and $0.79–$2.74. Nothing that costs a dollar per invocation gets
+   run automatically. Unmeasured and worth knowing: the same scope with
+   `--no-verify`, and whether `--path`-scoped runs land near $0.10.
+
+**Demoted: wiring it as a git hook.** This was step 2 and it was the wrong
+target. Reasons, so it does not get re-promoted by someone reading only the
+exit-code table:
+
+- **Cost and latency rule out pre-commit.** 9 commits were made in the session
+  that measured this; as a pre-commit hook that is roughly $10 and 15 minutes of
+  waiting for one afternoon. You would reach for `git commit --no-verify` on day
+  one, and a hook everyone bypasses is worse than no hook — it reads as
+  assurance while providing none.
+- **The gate has never fired.** After `eef0cdc`, zero of three blocking findings
+  were high or critical, so the exit-1 path has not triggered on real code once.
+  We know the tier *below* the gate is noisy and know nothing about the tier that
+  gates. Wiring an untriggered gate is wiring an untested one.
+- **The house rule already covers this.** `CLAUDE.md` on sqlfluff: make it
+  blocking "once findings are genuinely real ... not before, since a gate that
+  cries wolf gets bypassed." That was written for a linter that costs nothing.
+- **The hook adds little.** arbiter is already a command you run before opening a
+  PR. A hook only adds *automatic* invocation, which is exactly what makes the
+  cost unpredictable. The manual path has the property you want: you choose when
+  it is worth a dollar.
+
+If it does get automated, **CI on pull requests, not a local hook** — once per PR
+rather than per commit, cost visible and attributable, latency off your keyboard,
+and a bad run is a red check to read rather than a blocked commit to fight. And
+**non-blocking first** in any venue: report, exit 0, watch for a few weeks.
+
+Flip to blocking when the exit-1 path has fired correctly on a genuine
+high/critical defect three or four times *and* a scoped run is under ~15 seconds
+and ~$0.10. Cheap and fast are prerequisites for automatic; it is currently
+neither.
 
 **Two things to be careful about.**
 

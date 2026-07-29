@@ -130,7 +130,8 @@ is an argument for running both, not for picking one.
    afterwards, so `low` rejected as hard as `critical`. Fixed —
    `findings.gates_exit`, exit 1 now needs high or critical, unclassifiable
    severity gates rather than passes. This had to be settled before the git
-   hook (item 2 in NEXT_SESSION): a gate that cries wolf gets bypassed.
+   hook: a gate that cries wolf gets bypassed. (The hook itself is since
+   demoted — see "What has never been run" below.)
 2. **Cost, first real measurement:** 2 shell files in tessera →
    **24 model calls, 185k in / 12k out, $0.73**. That is ~12 calls per file, not
    4 — verification triples the call count, since every turn resends the
@@ -246,8 +247,13 @@ shell, on the first try, for $0.73.
 
 - **arbiter as a git hook**, despite the exit codes being designed for it. This
   was the right order: run it by hand first, and the first two foreign-repo runs
-  showed the gate would have fired on cosmetics. Fixed in `eef0cdc`; the hook is
-  unblocked now.
+  showed the gate would have fired on cosmetics. Fixed in `eef0cdc` — but
+  **deliberately still not wired, and demoted out of the next steps.** At 1–2
+  minutes and $0.79–$2.74 a run it is too slow and too expensive to fire
+  automatically, and after the severity fix the exit-1 path has not triggered on
+  real code once, so its precision at the tier that gates is unmeasured. Full
+  reasoning in `NEXT_SESSION.md` under "Demoted"; the conditions for revisiting
+  are written down there rather than left to judgement.
 - **A head-to-head since verification landed.** The comparison that made arbiter
   look weak predates the tool entirely, and the typed-tool rewrite has never
   been measured against `/code-review` on the same diff. Item 1's two runs are
