@@ -115,6 +115,22 @@ it because it was "only logging". Found by ruff (B905), fixed in `db50d16`.
   hour of being fixed. Both are now either removed or declared curated with
   `git log` authoritative. Prefer a command in the doc over a number in the doc.
 
+**START HERE — reviews are silently narrower than they claim (2026-07-29).**
+`is_reviewable()` filters on file extension, so extensionless shebang scripts are
+dropped and **nothing in the output says so**. Two runs against tessera printed
+"1 file(s) reviewed · 0 blocking" having never opened the file under review;
+re-run with `--ext ""` the same diffs produced two blocking findings, one of them
+real and fixed. `--path` cannot rescue it — `is_reviewable` runs before
+`matches_any` in `change_units()`, so the docstring's own advice ("pass an
+explicit path list") is not honoured by the CLI.
+
+This is item 7 in `STATE.md`'s priority list and instance 5 under *Fail-open*.
+It outranks the quality questions: a review narrower than it claims makes every
+clean result unfalsifiable, and this tool's whole value is that a green means
+something. **Do the cheapest part first — print what was skipped.** Even with the
+filter unchanged, an announced skip is a ceiling; an unannounced one is a false
+green. Then make `--path` authoritative, then detect by shebang.
+
 **Still open, lower priority:** an observatory entry for Tessera on whether hook
 payload parsing should be a shared tested helper (`FINDINGS.md` F-001 — second
 instance of a class nothing reviews); SQL support, deliberately deferred, not

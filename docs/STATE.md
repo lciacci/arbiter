@@ -130,6 +130,32 @@ is an argument for running both, not for picking one.
    again, and **the finder is better at locating than at concluding**. Verifying
    the repro before acting caught the one wrong consequence both times.
 
+   **Three more from tessera, 2026-07-29 — the pattern held a third time, and
+   one finding was worth taking on a reason arbiter did not give:**
+
+   - *tessera, medium/correctness (blocking):* a found-but-crashing `offer.py`
+     set its found-flag on the same line as the interpreter call, suppressing
+     the `degraded` report the change existed to emit. **Real, fixed** — and it
+     was in code written an hour earlier *to close a silent-failure bug*, which
+     its author had already tested hard.
+   - *tessera, medium/correctness (blocking):* a `tessera-watch` predicate keyed
+     its per-project tally by directory name, so same-named projects would
+     merge. **Premise false** — the discovery glob is single-parent and
+     non-recursive, so names are unique by construction and the collision cannot
+     occur. Taken anyway, for a reason arbiter did not state: the merged counter
+     would hold a *counting predicate quiet*, and it should not depend on a
+     property of a different function. **Right instinct, wrong justification,
+     still worth acting on** — a category the earlier runs had not produced.
+   - *tessera, medium/correctness (advisory):* restore scripts are not
+     `chmod +x`'d unlike `spend/guard.py`. **Observation right, consequence
+     wrong** — it argued `offer.py` is probed with `[ -x ]` so a missing exec
+     bit silently skips the install. The probe is `[ -f ]` and the file is run
+     as `python3 <path>`; the exec bit is irrelevant. Inert, no action.
+
+   Read together with instance 5 under *Fail-open*: the two blocking findings
+   came from a run that had to be **re-invoked with `--ext ""`** to see the code
+   at all. The default run reported "0 blocking" over files it never opened.
+
    The load-bearing result is about the *tiering*, not the finding quality:
    three of three blocking findings were not worth stopping a commit for.
    Triage votes on whether a finding is real and nothing consulted severity
@@ -175,6 +201,30 @@ is an argument for running both, not for picking one.
 
 6. **Triage was broken and is now fixed** — see below. Resolved, kept here
    because the *way* it was found is the transferable part.
+
+7. **OPEN, and it is the control-surface bug: reviews silently skip
+   extensionless files** (2026-07-29, found from tessera — full account under
+   *Fail-open* below). `is_reviewable()` filters on suffix, so a shebang script
+   with no extension is dropped, the output still reads
+   "N file(s) reviewed · 0 blocking", and `--path` cannot override it because
+   `is_reviewable` runs first in `change_units()`. Two runs against tessera
+   reviewed the tests and skipped the code.
+
+   This outranks most of the list because it is not a quality question — a
+   review that is *narrower than it claims* makes every clean result
+   unfalsifiable. Three parts, and the first is the one that matters:
+
+   - **Say what was skipped.** Print dropped paths and a count in the summary,
+     always. Even with the filter unchanged, an announced skip is a ceiling; an
+     unannounced one is a false green. Cheapest fix, largest effect, no
+     behaviour change.
+   - **Make `--path` authoritative.** A path the caller named explicitly should
+     bypass the extension filter — that is what the docstring already promises.
+   - **Detect by shebang.** `#!` + `python|bash|sh|zsh|node` on line 1 for
+     extensionless files. Tessera solved the same problem in its iCPG extractor
+     (ADR-0017) and the approach carries over.
+
+   `--ext ""` is the current workaround and selects extensionless files only.
 
 ## The triage bug, and two wrong diagnoses before it
 
@@ -280,7 +330,42 @@ fixed the previous one. Each was defensive in intent:
    the new severity gate in `eef0cdc`, and its unknown-sorts-last default would
    have meant an unparseable severity passes. `findings.gates_exit` deliberately
    does not use it.
+5. **A real fifth, and it is not a fallback — it is the SCOPE (2026-07-29).**
+   `is_reviewable()` filters on file extension, so extensionless files are
+   dropped. Found from tessera: `arbiter --base 84c63cc` printed
+   **"1 file(s) reviewed · 0 blocking"** having never opened
+   `bin/tessera-watch` — a `#!/usr/bin/env python3` file with no suffix, and
+   the entire subject of the change. Re-run with `--ext ""` it produced a
+   blocking finding immediately. The same filter had silently skipped
+   `bin/tessera-new-project` in an earlier run that *did* report findings from
+   the `.sh` files beside it, so the output looked like a working review of the
+   whole diff while the shipped file went unread.
 
-**The rule: when adding a fallback here, ask what a *gate* will conclude from
-it. If the answer is "pass", it is wrong.** This is arbiter-internal, not
-Tessera friction, so it lives here rather than in `docs/FINDINGS.md`.
+   **The docstring is honest — and that is what made it dangerous.** It says
+   *"Extensionless files are skipped… callers that care should pass an explicit
+   path list rather than relying on extension sniffing."* Two problems:
+
+   - **The output never says anything was dropped.** "1 file(s) reviewed" is
+     true and reads as complete. A caller sees a clean review, not a narrowed
+     one.
+   - **The documented escape hatch does not work.** In `change_units()`,
+     `is_reviewable(path, exts)` runs *before* `matches_any(path, paths)`, so
+     `--path bin/tessera-watch` returns "No reviewable changes." `--path` can
+     only narrow; it can never rescue a file the extension filter already
+     dropped. The docstring tells callers to do the one thing the CLI refuses.
+
+   Worth knowing: **tessera hit this exact defect independently in iCPG**
+   (its ADR-0017 — `symbols.py` dispatched on extension, so iCPG saw 84 of 260
+   code files, 32% of the repo). Two unrelated tools, same repo, same blind
+   spot. Shebang detection is the fix in both cases; tessera already wrote one.
+
+**The rule, and instance 5 widens it: when adding a fallback here, ask what a
+*gate* will conclude from it. If the answer is "pass", it is wrong.** A silent
+*filter* reaches the same conclusion by a different route — the gate passes on
+a file it never read. So the rule is not only about fallbacks: **any narrowing
+of scope must appear in the output, or the report is a false green.** A review
+tool's worst failure is not a wrong finding; it is a confident silence over
+code it never looked at.
+
+This is arbiter-internal, not Tessera friction, so it lives here rather than in
+`docs/FINDINGS.md`.
