@@ -19,11 +19,10 @@ came from `pr-arbiter`, which is now frozen as a research artifact. Positioning
 is **cheap and portable**, explicitly not "better than `/code-review`" — the
 measurements do not support that and should not be oversold.
 
-**State.** Working and clean, 247 tests. **Three commits ahead of
-`github.com/lciacci/arbiter`** (`66be55b`, `6e6a80a`, `eef0cdc`) — push them or
-know why not. The finders can run typed read-only inspection tools (`read_file`,
-`search`, `git_diff`, `git_log`) to check claims before reporting; that
-verification is on by default and costs roughly 3× a bare run.
+**State.** Working, pushed, clean at `github.com/lciacci/arbiter`. 247 tests.
+The finders can run typed read-only inspection tools (`read_file`, `search`,
+`git_diff`, `git_log`) to check claims before reporting; that verification is
+on by default and costs roughly 3× a bare run.
 
 **Measured, so don't re-derive it:**
 - Cost per file is **not** stable — it ranges 2× with file size, so don't

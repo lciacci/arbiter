@@ -1,8 +1,7 @@
 # Where this is, 2026-07-28 (updated after the first foreign-repo runs)
 
-Written at a pause. Everything below is committed. Nothing is half-applied.
-The last three commits (`66be55b`, `6e6a80a`, `eef0cdc`) are **local only** —
-`github.com/lciacci/arbiter` is three behind.
+Written at a pause. Everything below is committed and pushed to
+`github.com/lciacci/arbiter`. Nothing is half-applied.
 
 ## What arbiter is
 
