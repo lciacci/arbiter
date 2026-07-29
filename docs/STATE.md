@@ -15,6 +15,11 @@ distinction is load-bearing and the measurements below support it.
 
 ## Commit trail
 
+**Curated, not exhaustive — `git log` is authoritative.** An earlier version of
+this table tried to mirror every commit and was fifteen behind within a day,
+then six behind within an hour of being corrected. The value here is the
+annotation, not the completeness; pure `docs:` commits are left out.
+
 | commit | what |
 |---|---|
 | `83dd5a7` | port of the engine; triage wired in (pr-arbiter never called it), shell + TS reviewed, `lang_fence` bug fixed |
@@ -37,6 +42,7 @@ distinction is load-bearing and the measurements below support it.
 | `66be55b` | base/head pinned to SHAs so a live repo cannot move mid-run |
 | `6e6a80a` | `ref_label` on abbreviated SHAs; the two-arg diff disambiguated |
 | `eef0cdc` | **severity gates the exit code** — see item 1 |
+| `db50d16` | CLAUDE.md scaffold filled; ruff added; the ballot truncation it found |
 
 ## The measurement that matters
 
