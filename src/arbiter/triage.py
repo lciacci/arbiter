@@ -97,6 +97,14 @@ def vote(unit: dict, findings: list[dict], voice: Voice) -> list[dict]:
     if not findings:
         return []
 
+    # No cache_prefix here, deliberately. Measured with count_tokens against
+    # claude-sonnet-4-6, whose minimum cacheable prefix is 1024 tokens: this
+    # tool plus REVIEWER_VOICE is 1017, plus ARBITER_VOICE is 1024. One voice is
+    # below the floor and the other sits exactly on it, so a breakpoint would
+    # silently cache nothing half the time and flip on any wording edit. A
+    # marker that caches nothing is worse than no marker — it reads as done.
+    # Re-measure before adding one; do not add it on the assumption that a
+    # prompt this size must be cacheable.
     system = REVIEWER_VOICE if voice == "reviewer" else ARBITER_VOICE
     raw = call_tool(system, _user_message(unit, findings), TOOL).get("votes", [])
     parsed = _coerce_votes(raw)

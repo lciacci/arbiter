@@ -715,3 +715,112 @@ def test_hit_rate_is_zero_not_a_crash_on_an_empty_run():
     client.reset_usage()
     assert client.usage()["hit_rate"] == 0.0
     assert client.usage()["prompt"] == 0
+
+
+# ---------- prompt-cache breakpoints ----------
+#
+# Caching is a prefix match with a cap of four breakpoints per request. The
+# system block takes one; this moving marker is the other. Getting it wrong is
+# silent in both directions — too many breakpoints is a rejected request, a
+# marker on the wrong turn caches something nothing ever reads.
+
+from arbiter.client import _cached_system, _move_transcript_breakpoint
+
+
+class _SDKBlock:
+    """Assistant content as the SDK returns it: an object, not a dict."""
+
+    def __init__(self, type="tool_use"):
+        self.type = type
+
+
+def _marked(messages):
+    return [
+        i
+        for i, m in enumerate(messages)
+        if isinstance(m.get("content"), list)
+        for b in m["content"]
+        if isinstance(b, dict) and "cache_control" in b
+    ]
+
+
+def test_cached_system_wraps_the_prompt_in_one_marked_block():
+    blocks = _cached_system("you are a reviewer")
+    assert blocks == [
+        {"type": "text", "text": "you are a reviewer",
+         "cache_control": {"type": "ephemeral"}}
+    ]
+
+
+def test_breakpoint_lands_on_the_only_turn_at_the_start():
+    msgs = [{"role": "user", "content": [{"type": "text", "text": "diff"}]}]
+    _move_transcript_breakpoint(msgs)
+    assert _marked(msgs) == [0]
+
+
+def test_breakpoint_moves_instead_of_accumulating():
+    """One marker, always. Marking every turn would sit on the cap of four."""
+    msgs = [{"role": "user", "content": [{"type": "text", "text": "diff"}]}]
+    for _ in range(6):
+        _move_transcript_breakpoint(msgs)
+        msgs.append({"role": "assistant", "content": [_SDKBlock()]})
+        msgs.append({"role": "user", "content": [{"type": "tool_result", "content": "out"}]})
+    _move_transcript_breakpoint(msgs)
+    assert _marked(msgs) == [len(msgs) - 1]
+
+
+def test_breakpoint_skips_sdk_assistant_blocks():
+    """Assistant turns hold SDK objects; marking one would be a TypeError."""
+    msgs = [
+        {"role": "user", "content": [{"type": "text", "text": "diff"}]},
+        {"role": "assistant", "content": [_SDKBlock()]},
+    ]
+    _move_transcript_breakpoint(msgs)
+    assert _marked(msgs) == [0]
+
+
+def test_breakpoint_stays_on_the_transcript_when_the_nudge_is_appended():
+    """The forced final call appends a bare string; the marker must not follow it.
+
+    The nudge is the last thing in the prompt and nothing reads a breakpoint
+    placed there, so it belongs on the tool_result turn before it.
+    """
+    msgs = [
+        {"role": "user", "content": [{"type": "text", "text": "diff"}]},
+        {"role": "assistant", "content": [_SDKBlock()]},
+        {"role": "user", "content": [{"type": "tool_result", "content": "out"}]},
+        {"role": "user", "content": "Stop checking and report now."},
+    ]
+    _move_transcript_breakpoint(msgs)
+    assert _marked(msgs) == [2]
+
+
+def test_triage_does_not_mark_its_system_prompt(monkeypatch):
+    """Its prefix measures 1017/1024 tokens against a 1024 minimum — see triage.py."""
+    seen = {}
+    monkeypatch.setattr(
+        "arbiter.client.client",
+        lambda: type("C", (), {"messages": type("M", (), {
+            "create": staticmethod(
+                lambda **kw: seen.update(kw)
+                or _FakeResp([_Block("tool_use", "report_votes", {"votes": []})])
+            )
+        })()})(),
+    )
+    call_tool("voice", "msg", {"name": "report_votes"})
+    assert seen["system"] == "voice", "triage must send a plain string, unmarked"
+
+
+def test_finder_path_marks_its_system_prompt(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        "arbiter.client.client",
+        lambda: type("C", (), {"messages": type("M", (), {
+            "create": staticmethod(
+                lambda **kw: seen.update(kw)
+                or _FakeResp([_Block("tool_use", "report_findings", {"findings": []})])
+            )
+        })()})(),
+    )
+    call_tool("sys", "msg", {"name": "report_findings"}, cache_prefix=True)
+    assert seen["system"][0]["cache_control"] == {"type": "ephemeral"}

@@ -105,6 +105,66 @@ class AgentError(RuntimeError):
     """A model call did not produce the structured output it was forced to."""
 
 
+# ---------- prompt caching ----------
+#
+# Caching is a prefix match, and render order is tools -> system -> messages.
+# Two breakpoints per request, well under the cap of four.
+
+_EPHEMERAL = {"type": "ephemeral"}
+
+
+def _cached_system(system: str) -> list[dict]:
+    """The system prompt as one cacheable block, which caches tools with it.
+
+    A breakpoint here covers everything rendered before it, so the inspection
+    tools and the agent's report schema ride along. Measured against
+    claude-sonnet-4-6 with count_tokens: 2138 tokens for the reviewer with
+    verification on, 2006 for the second pass, 1551 and 1419 with --no-verify.
+    All clear the model's 1024-token minimum. Every one of those is a module
+    constant, so each file in a run and each turn of the verification loop
+    reads the same entry.
+
+    Deliberately not used by triage — see the note in triage.py. Its two voices
+    measure 1017 and 1024 tokens, i.e. one is below the minimum and the other
+    is exactly on it, and a marker that silently caches nothing is worse than
+    no marker because it reads as done.
+    """
+    return [{"type": "text", "text": system, "cache_control": _EPHEMERAL}]
+
+
+def _move_transcript_breakpoint(messages: list[dict]) -> None:
+    """Put the one message breakpoint on the newest turn, so turn N reads 1..N-1.
+
+    This is the larger win, not the fixed prefix. Each turn of the verification
+    loop resends the whole conversation, and turn one already carries the diff
+    plus the entire before- and after-state. Measured over three files in this
+    repo, a five-turn verified review re-sends 76-78% of its input tokens:
+    docs/STATE.md is 14,409 tokens on turn one and 79,045 across five turns.
+
+    One marker, moved, rather than one per turn. The cap is four breakpoints per
+    request and the system block takes one, so marking every turn would sit
+    exactly on the cap at MAX_VERIFY_TURNS=4 and break silently the first time
+    anyone raised it. A single moving marker is still read every turn: the
+    lookback window is 20 content blocks and a round adds about four.
+
+    Marks the last block of the last message that has one — the assistant turns
+    hold SDK objects rather than dicts, and the final nudge is a bare string, so
+    those are skipped and the marker stays on the newest tool_result turn.
+    """
+    target = None
+    for m in messages:
+        content = m.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict):
+                block.pop("cache_control", None)
+        if content and isinstance(content[-1], dict):
+            target = content[-1]
+    if target is not None:
+        target["cache_control"] = _EPHEMERAL
+
+
 def require_python() -> None:
     """Fail loudly on an unsupported interpreter.
 
@@ -153,14 +213,17 @@ def call_tool_verified(
     MAX_VERIFY_TURNS is where checking stops paying for itself.
     """
     if repo is None:
-        return call_tool(system, user_msg, tool)
+        return call_tool(system, user_msg, tool, cache_prefix=True)
 
-    messages: list[dict] = [{"role": "user", "content": user_msg}]
+    # A block list, not a bare string, so the transcript breakpoint can land on
+    # it: turn one's body is what turn two would otherwise re-send at full price.
+    messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": user_msg}]}]
     for _ in range(max_turns):
+        _move_transcript_breakpoint(messages)
         resp = client().messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=system,
+            system=_cached_system(system),
             tools=[*TOOLS, tool],
             messages=messages,
         )
@@ -215,14 +278,17 @@ def call_tool_verified(
                 f"{tool['name']} tool, based on what you have established."
             ),
         })
+    _move_transcript_breakpoint(messages)
     resp = client().messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=system,
+        system=_cached_system(system),
         # The transcript may reference the inspection tools, so they stay
         # declared even though tool_choice forces the report. Omitting them
         # leaves tool_use blocks pointing at undeclared tools.
         tools=[*TOOLS, tool],
+        # tool_choice does not invalidate the tools+system cache — only tool
+        # definitions and the model itself do.
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=messages,
     )
@@ -230,8 +296,14 @@ def call_tool_verified(
     return _extract(resp, tool)
 
 
-def call_tool(system: str, user_msg: str, tool: dict) -> dict:
+def call_tool(system: str, user_msg: str, tool: dict, *, cache_prefix: bool = False) -> dict:
     """One forced-tool-use call. Returns the tool input dict.
+
+    `cache_prefix` puts a breakpoint on the system block, caching it with the
+    tool definitions. It is opt-in rather than the default because it is only
+    correct when the prefix actually clears the model's minimum — see
+    `_cached_system`, and the measured numbers in triage.py for the caller
+    where it does not.
 
     Raises AgentError if the response carries no matching tool_use block.
 
@@ -246,7 +318,7 @@ def call_tool(system: str, user_msg: str, tool: dict) -> dict:
     resp = client().messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=system,
+        system=_cached_system(system) if cache_prefix else system,
         tools=[tool],
         tool_choice={"type": "tool", "name": tool["name"]},
         messages=[{"role": "user", "content": user_msg}],
