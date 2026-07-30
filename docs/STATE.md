@@ -182,6 +182,35 @@ is an argument for running both, not for picking one.
    in "files changed" is wrong twice over: only reviewable files cost anything
    (conclave changed 114 files, 113 were logs and result data, one was
    reviewed), and their size drives the rest.
+
+   **All four points predate prompt caching (2026-07-30) and are now upper
+   bounds.** Measured end-to-end afterwards on one 230-line Python file at
+   `--jobs 1`: 6 calls, 75,552 prompt tokens, 50% served from cache, $0.17 —
+   against $0.24 for the same token count at full input rate, about 29% off.
+
+   The load-bearing finding was *where* the money was, and it was not the fixed
+   prefix. Each verification turn resends the whole conversation, and turn one
+   already carries the diff plus the entire before- and after-state, so a
+   five-turn review re-sends 76-78% of its input tokens — `docs/STATE.md` itself
+   measures 14,409 tokens on turn one and 79,045 across five turns. The system
+   prompt is 2138 of that. So the transcript breakpoint is the one that pays;
+   the prefix breakpoint is the cheap one that also pays across files.
+
+   **Triage is deliberately not cached, and the number is why.** Its prefix
+   measures 1017 tokens for the reviewer voice and 1024 for the arbiter voice,
+   against claude-sonnet-4-6's 1024-token minimum. One is below the floor and
+   the other is exactly on it. A breakpoint there would silently cache nothing
+   half the time and flip on any wording edit — and a marker that caches nothing
+   is *worse* than no marker, because it reads as done. Same family as
+   *Fail-open* below: not a wrong answer, a confident claim about work that
+   never happened. Re-measure with `count_tokens` before adding one.
+
+   Related trap, avoided on purpose: `usage()` used to sum `input_tokens`, which
+   is the **uncached remainder**, not the prompt. Had the meter not been fixed
+   first and separately, the cost line would have fallen while the token total
+   silently under-reported by exactly the amount caching saved — a number moving
+   the right way for the wrong reason. The meter landed as its own commit
+   (`57a7683`) ahead of any `cache_control` (`46c42e3`) for that reason.
 3. **Tessera seams — both resolved, kept for the trail.** `docs/FINDINGS.md` is
    the S5 feedback seam and is no longer empty: F-001 (the icpg-session-base
    glob, transferred as tessera `8af9789`) and F-002 (`.tessera/` adoption,

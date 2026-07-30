@@ -52,10 +52,14 @@ default and costs roughly 3× a bare run.
    `STATE.md` item 1 for the two runs and all three findings with verdicts. No
    head-to-head against `/code-review` on the current build, so the comparative
    standing is unmeasured.
-3. **Get a run cheap and fast enough to be worth automating.** Today a run is
-   1–2 minutes and $0.79–$2.74. The specific unmeasured number that decides it:
-   **the same scope with `--no-verify`**, plus whether `--path`-scoped runs land
-   near $0.10.
+3. **Get a run cheap and fast enough to be worth automating.** Partly done.
+   Prompt caching landed 2026-07-30 and takes back ~29% on a verified run
+   (measured: 1 file, 6 calls, 75,552 prompt tokens, 50% cached, $0.17), so the
+   $0.79–$2.74 table in `STATE.md` is now an upper bound. Triage is
+   deliberately uncached — its prefix measures 1017/1024 tokens against a
+   1024-token minimum, and a marker that caches nothing reads as done. Still
+   unmeasured: **the same scope with `--no-verify`**, and whether
+   `--path`-scoped runs land near $0.10.
 
 **Demoted, deliberately: wiring it as a git hook.** It was step 2 and it was the
 wrong target. Reasons are in full in `STATE.md` under "What has never been run",

@@ -171,7 +171,8 @@ would make the token total shrink for the same reason the cost does. The
 percentage is what was served from cache; a run that reports 0% across repeated
 calls means something is invalidating the prefix, not that caching is off.
 
-Four measured runs, all with verification on:
+Four measured runs, all with verification on. **All four predate prompt
+caching** — see below; expect a run today to come in cheaper than these:
 
 | repo | scope | calls | cost | per file |
 |---|---|--:|--:|--:|
@@ -191,6 +192,16 @@ rather than 4) because every turn resends the conversation. What that 3× buys i
 **filtering, not volume** — the same number of findings, but roughly three times
 as many of them dropped by triage. Run it and read the line rather than trusting
 these.
+
+**Prompt caching takes most of that resend cost back.** The finders' system
+prompt and tool definitions are cached together, and so is the verification
+transcript, so turn N reads turns 1..N−1 instead of re-paying for them. Measured
+end-to-end on one 230-line Python file, `--jobs 1`: 6 calls, 75,552 prompt
+tokens, **50% served from cache, $0.17** — against $0.24 for the same token
+count at full input rate, so about 29% off. The savings scale with how many
+verification turns a file provokes, and dilute on files that produce findings,
+since the two triage calls are not cached (their prefix measures 1017 and 1024
+tokens against a 1024-token minimum — a marker there would cache nothing).
 
 Pricing is indicative list price (`PRICE_IN_PER_MTOK` in `client.py`) and will
 drift; treat it as "cents or dollars", not an invoice. Drivers, in order:
