@@ -162,8 +162,14 @@ All of that was measured on Sonnet 4.6.
 Every run reports its own usage, to stderr and at the foot of the report:
 
 ```
-<N> model calls · <in> in / <out> out tokens · ~$<estimate>
+<N> model calls · <in> in (<pct>% cached) / <out> out tokens · ~$<estimate>
 ```
+
+`<in>` is the whole prompt across every call, not the part that was billed at
+full rate — `input_tokens` alone is the *uncached remainder*, and reporting that
+would make the token total shrink for the same reason the cost does. The
+percentage is what was served from cache; a run that reports 0% across repeated
+calls means something is invalidating the prefix, not that caching is off.
 
 Four measured runs, all with verification on:
 

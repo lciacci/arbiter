@@ -650,3 +650,68 @@ def test_ballot_distinguishes_an_absent_vote_from_an_unsure_one(monkeypatch):
 
     ballot = run_unit({"path": "a.py", "status": "M"}, repo=None)["ballot"]
     assert [b["reviewer"] for b in ballot] == ["unsure", "missing"]
+
+
+# ---------- usage metering ----------
+#
+# `input_tokens` is the uncached remainder, not the prompt size. A meter that
+# sums only that field under-reports the prompt by exactly the amount caching
+# saves, so the cost line would fall for the wrong reason while the token total
+# went quietly wrong. These pin the arithmetic against that.
+
+from arbiter import client
+
+
+class _UsageCounts:
+    def __init__(self, **kw):
+        self.input_tokens = kw.get("input_tokens", 0)
+        self.output_tokens = kw.get("output_tokens", 0)
+        self.cache_creation_input_tokens = kw.get("cache_creation_input_tokens", 0)
+        self.cache_read_input_tokens = kw.get("cache_read_input_tokens", 0)
+
+
+class _UsageResp:
+    def __init__(self, **kw):
+        self.usage = _UsageCounts(**kw)
+
+
+def test_usage_counts_the_whole_prompt_not_just_the_uncached_part():
+    client.reset_usage()
+    client._record(_UsageResp(input_tokens=100, cache_creation_input_tokens=2000,
+                             cache_read_input_tokens=0, output_tokens=50))
+    client._record(_UsageResp(input_tokens=100, cache_creation_input_tokens=0,
+                             cache_read_input_tokens=2000, output_tokens=50))
+    snap = client.usage()
+    assert snap["calls"] == 2
+    assert snap["input"] == 200
+    # 200 uncached + 2000 written + 2000 read. Summing `input` alone gives 200.
+    assert snap["prompt"] == 4200
+    assert snap["hit_rate"] == pytest.approx(2000 / 4200, abs=1e-4)
+    client.reset_usage()
+
+
+def test_usage_prices_cache_reads_below_uncached_input():
+    """A read must not be billed as full-price input, or caching looks free."""
+    client.reset_usage()
+    client._record(_UsageResp(input_tokens=0, cache_read_input_tokens=1_000_000))
+    cached = client.usage()["usd"]
+    client.reset_usage()
+    client._record(_UsageResp(input_tokens=1_000_000))
+    uncached = client.usage()["usd"]
+    client.reset_usage()
+    assert cached == pytest.approx(client.PRICE_IN_PER_MTOK * client.CACHE_READ_MULTIPLIER)
+    assert cached < uncached
+
+
+def test_usage_charges_the_write_premium():
+    client.reset_usage()
+    client._record(_UsageResp(cache_creation_input_tokens=1_000_000))
+    written = client.usage()["usd"]
+    client.reset_usage()
+    assert written == pytest.approx(client.PRICE_IN_PER_MTOK * client.CACHE_WRITE_MULTIPLIER)
+
+
+def test_hit_rate_is_zero_not_a_crash_on_an_empty_run():
+    client.reset_usage()
+    assert client.usage()["hit_rate"] == 0.0
+    assert client.usage()["prompt"] == 0

@@ -33,17 +33,32 @@ _CLIENT: Anthropic | None = None
 _CLIENT_LOCK = threading.Lock()
 
 # Indicative list pricing, USD per million tokens. Not authoritative — it moves,
-# and it is wrong for cached or batched traffic. Good enough to answer "is this
-# run cents or dollars", which is the question that decides whether the tool is
-# worth running on every branch.
+# and it is wrong for batched traffic. Good enough to answer "is this run cents
+# or dollars", which is the question that decides whether the tool is worth
+# running on every branch.
 PRICE_IN_PER_MTOK = 3.00
 PRICE_OUT_PER_MTOK = 15.00
 
-_USAGE = {"calls": 0, "input": 0, "output": 0}
+# Cached input is priced off the base input rate: a write costs 1.25x (5-minute
+# TTL) and a read 0.1x. Break-even at the 5-minute TTL is two requests.
+CACHE_WRITE_MULTIPLIER = 1.25
+CACHE_READ_MULTIPLIER = 0.10
+
+_USAGE = {"calls": 0, "input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
 _USAGE_LOCK = threading.Lock()
 
 
 def _record(resp) -> None:
+    """Accumulate one response's usage.
+
+    All three input counters, not just `input_tokens`. `input_tokens` is the
+    **uncached remainder** — the real prompt size is
+    input + cache_creation_input_tokens + cache_read_input_tokens. Summing only
+    the first would under-report the prompt by exactly the amount caching saves,
+    so the reported cost would fall while the reported token total silently went
+    wrong. That is the shape of failure this codebase keeps producing: a number
+    that moves in the right direction for the wrong reason.
+    """
     u = getattr(resp, "usage", None)
     if u is None:
         return
@@ -51,14 +66,30 @@ def _record(resp) -> None:
         _USAGE["calls"] += 1
         _USAGE["input"] += getattr(u, "input_tokens", 0) or 0
         _USAGE["output"] += getattr(u, "output_tokens", 0) or 0
+        _USAGE["cache_write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+        _USAGE["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
 
 
 def usage() -> dict:
-    """Tokens and estimated dollars for this process so far."""
+    """Tokens, cache hit rate, and estimated dollars for this process so far.
+
+    `prompt` is the whole prompt across every call; `input` remains the uncached
+    part of it. `hit_rate` is the fraction served from cache — read it as the
+    answer to "did caching engage at all", where a flat zero over repeated calls
+    means something is invalidating the prefix, not that caching is off.
+    """
     with _USAGE_LOCK:
         snap = dict(_USAGE)
+    snap["prompt"] = snap["input"] + snap["cache_write"] + snap["cache_read"]
+    snap["hit_rate"] = round(snap["cache_read"] / snap["prompt"], 4) if snap["prompt"] else 0.0
     snap["usd"] = round(
-        snap["input"] / 1_000_000 * PRICE_IN_PER_MTOK
+        (
+            snap["input"]
+            + snap["cache_write"] * CACHE_WRITE_MULTIPLIER
+            + snap["cache_read"] * CACHE_READ_MULTIPLIER
+        )
+        / 1_000_000
+        * PRICE_IN_PER_MTOK
         + snap["output"] / 1_000_000 * PRICE_OUT_PER_MTOK,
         4,
     )
@@ -67,7 +98,7 @@ def usage() -> dict:
 
 def reset_usage() -> None:
     with _USAGE_LOCK:
-        _USAGE.update(calls=0, input=0, output=0)
+        _USAGE.update(calls=0, input=0, output=0, cache_write=0, cache_read=0)
 
 
 class AgentError(RuntimeError):

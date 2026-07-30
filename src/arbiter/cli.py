@@ -187,7 +187,8 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None)
         out += [
             "---",
             "",
-            (f"_{spend['calls']} model calls · {spend['input']:,} in / "
+            (f"_{spend['calls']} model calls · {spend['prompt']:,} in "
+             f"({spend['hit_rate']:.0%} served from cache) / "
              f"{spend['output']:,} out tokens · ~${spend['usd']:.2f} at list price._"),
             "",
         ]
@@ -283,8 +284,8 @@ def main(argv: list[str] | None = None) -> int:
     spend = usage()
     print(
         f"\n{spend['calls']} model calls · "
-        f"{spend['input']:,} in / {spend['output']:,} out tokens · "
-        f"~${spend['usd']:.2f}",
+        f"{spend['prompt']:,} in ({spend['hit_rate']:.0%} cached) / "
+        f"{spend['output']:,} out tokens · ~${spend['usd']:.2f}",
         file=sys.stderr,
     )
 
