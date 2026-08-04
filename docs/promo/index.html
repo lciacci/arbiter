@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>arbiter — a cheap, portable second opinion on a code change</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --bg-alt: #11141b;
+    --tile: #161a23;
+    --tile-hover: #1c2230;
+    --border: #262c3a;
+    --text: #e6e9f0;
+    --text-dim: #8b93a7;
+    --accent: #5ec9a8;
+    --accent-2: #d9a64e;
+    --accent-3: #e06b6b;
+    --accent-4: #6b9fd9;
+    --radius: 10px;
+    font-size: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.6;
+    scroll-behavior: smooth;
+  }
+
+  .mosaic-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); }
+  .mosaic-bg svg { width: 100%; height: 100%; opacity: 0.45; }
+  .mosaic-bg .tile { fill: var(--tile); stroke: var(--border); stroke-width: 1; }
+
+  a { color: var(--accent-4); }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(10px);
+    background: rgba(11,13,18,0.85);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; max-width: 980px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.02em; }
+  .brand .mark { width: 24px; height: 24px; flex: 0 0 auto; }
+  nav ul { list-style: none; display: flex; gap: 22px; margin: 0; padding: 0; flex-wrap: wrap; }
+  nav a.navlink { color: var(--text-dim); text-decoration: none; font-size: 0.92rem; }
+  nav a.navlink:hover { color: var(--text); }
+  @media (max-width: 700px) { nav ul { display: none; } }
+
+  header.hero { padding: 92px 0 66px; text-align: center; }
+  .kicker {
+    display: inline-block; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(94,201,168,0.35); background: rgba(94,201,168,0.08);
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 22px;
+  }
+  h1.title {
+    font-size: clamp(2.1rem, 4.6vw, 3.2rem); margin: 0 0 18px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(120deg, var(--text) 30%, var(--accent) 72%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 1.13rem; color: var(--text-dim); max-width: 680px; margin: 0 auto 30px; }
+  .tagline em { color: var(--text); font-style: normal; }
+
+  .hero-cmd {
+    display: inline-block; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 18px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92rem; color: var(--accent); margin-bottom: 26px; cursor: pointer; user-select: all;
+  }
+  .hero-cmd::before { content: "$ "; color: var(--text-dim); }
+
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 34px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 11px 22px; border-radius: 8px;
+    font-weight: 600; font-size: 0.95rem; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #06181a; }
+  .btn-primary:hover { background: #7fdcc0; }
+  .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--text-dim); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; max-width: 800px; margin: 0 auto; }
+  @media (max-width: 700px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--tile); border: 1px solid var(--border); border-radius: 10px; padding: 16px 10px; }
+  .stat .num { font-size: 1.45rem; font-weight: 800; color: var(--accent); }
+  .stat .lbl { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  section { padding: 62px 0; border-top: 1px solid var(--border); }
+  section.no-border { border-top: none; }
+  h2.section-title { font-size: 1.85rem; margin: 0 0 8px; font-weight: 700; letter-spacing: -0.01em; }
+  p.section-sub { color: var(--text-dim); max-width: 720px; margin: 0 0 32px; font-size: 1.0rem; }
+
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--tile); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .card:hover { border-color: rgba(94,201,168,0.4); transform: translateY(-2px); }
+  .card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 0.92rem; }
+  .card .badge {
+    display: inline-block; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px; margin-bottom: 10px;
+  }
+
+  /* pipeline diagram */
+  .pipeline { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .pipe-stage {
+    flex: 1; min-width: 200px; background: var(--tile); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; position: relative;
+  }
+  .pipe-stage h4 { margin: 0 0 6px; color: var(--accent); font-size: 0.95rem; }
+  .pipe-stage p { margin: 0; color: var(--text-dim); font-size: 0.84rem; }
+  .pipe-arrow { display: flex; align-items: center; justify-content: center; padding: 0 10px; color: var(--text-dim); font-size: 1.3rem; }
+  @media (max-width: 760px) { .pipeline { flex-direction: column; } .pipe-arrow { transform: rotate(90deg); padding: 6px 0; } }
+
+  /* tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .tab-btn {
+    background: var(--tile); border: 1px solid var(--border); color: var(--text-dim); padding: 9px 16px;
+    border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+  }
+  .tab-btn.active { color: #06181a; background: var(--accent); border-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadein 0.25s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* tables */
+  table.data {
+    width: 100%; border-collapse: collapse; background: var(--tile); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; font-size: 0.86rem;
+  }
+  table.data th, table.data td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
+  table.data th:first-child, table.data td:first-child { text-align: left; color: var(--text); }
+  table.data th { color: var(--text-dim); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr.highlight td { color: var(--accent); font-weight: 700; }
+  .table-scroll { overflow-x: auto; }
+
+  /* code blocks */
+  pre.code {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px;
+    overflow-x: auto; font-size: 0.85rem; margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text);
+  }
+  pre.code .c { color: var(--text-dim); }
+  pre.code .f { color: var(--accent-2); }
+  .code-wrap { position: relative; }
+  .copy-btn {
+    position: absolute; top: 10px; right: 10px; background: var(--tile); border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 0.72rem; cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--text-dim); }
+
+  /* triage simulator */
+  .sim { background: var(--tile); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .sim-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .sim-grid { grid-template-columns: 1fr; } }
+  .sim-col > .sim-label {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 8px;
+  }
+  .sim-opts { display: flex; flex-direction: column; gap: 6px; }
+  .opt {
+    background: var(--bg-alt); border: 1px solid var(--border); color: var(--text-dim); border-radius: 7px;
+    padding: 8px 12px; cursor: pointer; font-size: 0.85rem; text-align: left; font-weight: 600;
+    transition: border-color 0.12s ease, color 0.12s ease;
+  }
+  .opt:hover { color: var(--text); }
+  .opt.sel { color: var(--text); border-color: var(--accent); background: rgba(94,201,168,0.10); }
+  .opt small { display: block; font-weight: 400; font-size: 0.74rem; color: var(--text-dim); }
+
+  .verdict { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 20px; display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .verdict-badge {
+    flex: 0 0 auto; border-radius: 8px; padding: 12px 18px; font-weight: 800; letter-spacing: 0.04em;
+    text-transform: uppercase; font-size: 0.85rem;
+  }
+  .verdict-badge.blocking { background: rgba(224,107,107,0.15); color: var(--accent-3); border: 1px solid rgba(224,107,107,0.45); }
+  .verdict-badge.advisory { background: rgba(217,166,78,0.15); color: var(--accent-2); border: 1px solid rgba(217,166,78,0.45); }
+  .verdict-badge.dropped { background: rgba(139,147,167,0.12); color: var(--text-dim); border: 1px solid var(--border); }
+  .verdict-text { flex: 1; min-width: 240px; color: var(--text-dim); font-size: 0.9rem; }
+  .verdict-text strong { color: var(--text); }
+  .exit-pill {
+    display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem; border-radius: 6px; padding: 2px 10px; margin-top: 8px; border: 1px solid var(--border);
+    background: var(--bg-alt);
+  }
+  .exit-pill.fail { color: var(--accent-3); border-color: rgba(224,107,107,0.45); }
+  .exit-pill.pass { color: var(--accent); border-color: rgba(94,201,168,0.45); }
+
+  /* cost estimator */
+  .est { background: var(--tile); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .est-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .est-row label { font-size: 0.85rem; color: var(--text-dim); min-width: 150px; }
+  input[type=range] { flex: 1; min-width: 180px; accent-color: var(--accent); }
+  .est-val { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); min-width: 40px; text-align: right; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button {
+    background: var(--bg-alt); border: 1px solid var(--border); color: var(--text-dim); border-radius: 7px;
+    padding: 7px 13px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
+  }
+  .seg button.sel { color: var(--text); border-color: var(--accent); background: rgba(94,201,168,0.10); }
+  .est-out { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 4px; }
+  .est-out .money { font-size: 2rem; font-weight: 800; color: var(--accent); }
+  .est-out .note { color: var(--text-dim); font-size: 0.85rem; margin-top: 6px; }
+
+  /* accordion */
+  .accordion-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; background: var(--tile); }
+  .accordion-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer; user-select: none; }
+  .accordion-head:hover { background: var(--tile-hover); }
+  .accordion-num {
+    flex: 0 0 auto; width: 30px; height: 28px; border-radius: 6px; background: rgba(94,201,168,0.12);
+    color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;
+  }
+  .accordion-title { flex: 1; font-weight: 600; font-size: 0.92rem; }
+  .accordion-chevron { color: var(--text-dim); transition: transform 0.2s ease; }
+  .accordion-item.open .accordion-chevron { transform: rotate(180deg); }
+  .accordion-body {
+    max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+    color: var(--text-dim); font-size: 0.88rem; padding: 0 18px;
+  }
+  .accordion-item.open .accordion-body { max-height: 420px; padding: 0 18px 16px 62px; }
+
+  /* findings list */
+  .findings-list { display: flex; flex-direction: column; gap: 10px; }
+  .finding {
+    display: flex; gap: 14px; align-items: flex-start; background: var(--tile); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px;
+  }
+  .finding .icon { font-size: 1.1rem; flex: 0 0 auto; margin-top: 1px; }
+  .finding .body strong { color: var(--text); }
+  .finding .body { color: var(--text-dim); font-size: 0.9rem; }
+
+  .callout {
+    border: 1px solid rgba(224,107,107,0.45); background: rgba(224,107,107,0.08); border-radius: 8px;
+    padding: 16px 18px; color: var(--text-dim); font-size: 0.9rem;
+  }
+  .callout strong { color: var(--accent-3); }
+
+  .quote { font-style: italic; color: var(--text-dim); border-left: 2px solid var(--accent); padding-left: 16px; margin: 26px 0 0; }
+
+  code.inline {
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85em; color: var(--accent);
+  }
+
+  footer { padding: 50px 0 70px; text-align: center; color: var(--text-dim); font-size: 0.85rem; }
+  footer .mark-row { margin-bottom: 14px; opacity: 0.6; }
+  footer .reading-guide { max-width: 640px; margin: 0 auto 26px; text-align: left; font-size: 0.82rem; }
+  footer .reading-guide a { display: block; padding: 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="mosaic-bg" id="mosaicBg"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="https://github.com/lciacci/arbiter" style="text-decoration:none; color:inherit;">
+      <svg class="mark" viewBox="0 0 24 24">
+        <circle cx="8" cy="12" r="7.5" fill="#5ec9a8" opacity="0.85"/>
+        <circle cx="16" cy="12" r="7.5" fill="#d9a64e" opacity="0.85"/>
+        <rect x="11.4" y="2" width="1.2" height="20" fill="#0b0d12" opacity="0.8"/>
+      </svg>
+      arbiter
+    </a>
+    <ul>
+      <li><a class="navlink" href="#pipeline">Pipeline</a></li>
+      <li><a class="navlink" href="#cost">Cost</a></li>
+      <li><a class="navlink" href="#verification">Verification</a></li>
+      <li><a class="navlink" href="#evidence">Evidence</a></li>
+      <li><a class="navlink" href="#limits">Where it loses</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Adversarial code review · CLI · any repo</span>
+    <h1 class="title">Three agents argue about your diff.<br>You read the short list.</h1>
+    <p class="tagline">arbiter runs a reviewer, an <em>independent</em> second pass, and a two-voice triage vote over a git ref range. Output is two tiers — <em>blocking</em> and <em>advisory</em> — and it exits 1 on a high or critical blocking finding, so it can gate a hook. Cheap and portable, not "better than the alternative."</p>
+    <div class="hero-cmd">arbiter --base main</div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#pipeline">See the triage rule</a>
+      <a class="btn btn-ghost" href="#limits">Read where it loses</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="num">$0.37–$0.79</div><div class="lbl">measured cost per reviewed file</div></div>
+      <div class="stat"><div class="num">~12</div><div class="lbl">model calls per file, verification on</div></div>
+      <div class="stat"><div class="num">50%</div><div class="lbl">prompt tokens served from cache</div></div>
+      <div class="stat"><div class="num">0</div><div class="lbl">Claude Code dependency in the engine</div></div>
+    </div>
+  </div>
+</header>
+
+<section class="no-border" id="what">
+  <div class="wrap">
+    <h2 class="section-title">What it actually is</h2>
+    <p class="section-sub">A single CLI over a git ref range. Everything it reads comes from git at a pinned SHA — never the working tree — so it is safe to point at a repo somebody else is committing to.</p>
+    <div class="grid-3">
+      <div class="card">
+        <span class="badge">Cheap</span>
+        <h3>The win is triage, not fan-out</h3>
+        <p>Four model calls per file plus verification turns. The triage step exists to keep the blocking list <em>short</em> rather than long. Every run prints its own token count and cost estimate, so the claim stays checkable.</p>
+      </div>
+      <div class="card">
+        <span class="badge">Portable</span>
+        <h3>Plain Python, bare SDK client</h3>
+        <p>Constructed bare, so <code class="inline">ANTHROPIC_BASE_URL</code> points it at any compatible gateway. No Claude Code dependency anywhere in the engine. Python 3.13+ and an API key.</p>
+      </div>
+      <div class="card">
+        <span class="badge">Honest</span>
+        <h3>It is a first pass</h3>
+        <p>Measured head-to-head against a 31-agent workflow review on the same diff, arbiter found 2 of its 3 real defects and missed 8 others. It is not trying to beat the heavy option — it is trying to cost cents.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="wrap">
+    <h2 class="section-title">The pipeline</h2>
+    <p class="section-sub">Independence is the design property. The second pass sees the first only as anti-redundancy context — it can <em>add</em> findings, never remove them. Removal is triage's job, and triage is source-blind.</p>
+
+    <div class="pipeline">
+      <div class="pipe-stage">
+        <h4>1. Reviewer</h4>
+        <p>Adversarial first pass over one changed file. Tuned to surface issues, not to triage them.</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <h4>2. Second pass</h4>
+        <p>An independent review that sees pass 1 only so it does not repeat it. Additive by construction.</p>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-stage">
+        <h4>3. Triage</h4>
+        <p>Two source-blind voices vote KEEP / DROP / UNSURE on the merged list. They never see which pass produced a finding.</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:1.15rem; margin:44px 0 8px;">Try the rule</h3>
+    <p class="section-sub" style="margin-bottom:22px;">Both voices keep → blocking. Both drop → dropped. Anything else → advisory. Then severity decides whether the process actually fails. Pick a ballot:</p>
+
+    <div class="sim">
+      <div class="sim-grid">
+        <div class="sim-col">
+          <div class="sim-label">Voice A — reviewer-style</div>
+          <div class="sim-opts" data-group="a">
+            <button class="opt sel" data-v="keep">KEEP<small>the finding is real</small></button>
+            <button class="opt" data-v="drop">DROP<small>not real / not worth it</small></button>
+            <button class="opt" data-v="unsure">UNSURE<small>abstains</small></button>
+          </div>
+        </div>
+        <div class="sim-col">
+          <div class="sim-label">Voice B — skeptic</div>
+          <div class="sim-opts" data-group="b">
+            <button class="opt sel" data-v="keep">KEEP<small>the finding is real</small></button>
+            <button class="opt" data-v="drop">DROP<small>not real / not worth it</small></button>
+            <button class="opt" data-v="unsure">UNSURE<small>abstains</small></button>
+          </div>
+        </div>
+        <div class="sim-col">
+          <div class="sim-label">Severity on the finding</div>
+          <div class="sim-opts" data-group="sev">
+            <button class="opt" data-v="low">low</button>
+            <button class="opt" data-v="medium">medium</button>
+            <button class="opt sel" data-v="high">high</button>
+            <button class="opt" data-v="critical">critical</button>
+            <button class="opt" data-v="junk">unparseable<small>model returned something odd</small></button>
+          </div>
+        </div>
+      </div>
+      <div class="verdict">
+        <div class="verdict-badge blocking" id="vBadge">blocking</div>
+        <div class="verdict-text">
+          <span id="vText"></span>
+          <div class="exit-pill fail" id="vExit">exit 1</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:18px;"><strong style="color:var(--text)">Severity gates as well as agreement, and it did not always.</strong> Triage votes on whether a finding is <em>real</em>, never on whether it is worth stopping for — so <code class="inline">low</code> used to reject a commit exactly as hard as <code class="inline">critical</code>. Measured over two runs, three of three blocking findings were cosmetic or inapplicable. A gate that cries wolf gets bypassed. Findings below high are still reported in full; they just do not fail the process. An unrecognisable severity <em>does</em> gate — it is model output, and the safe direction is to stop.</p>
+
+    <h3 style="font-size:1.15rem; margin:44px 0 14px;">Exit codes</h3>
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr><th>Code</th><th style="text-align:left">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td style="font-family:ui-monospace,Menlo,monospace">0</td><td style="text-align:left; color:var(--text-dim)">nothing worth stopping for</td></tr>
+          <tr class="highlight"><td style="font-family:ui-monospace,Menlo,monospace">1</td><td style="text-align:left">blocking findings at high or critical — reject</td></tr>
+          <tr><td style="font-family:ui-monospace,Menlo,monospace">2</td><td style="text-align:left; color:var(--text-dim)">could not run at all (bad ref, not a repo)</td></tr>
+          <tr><td style="font-family:ui-monospace,Menlo,monospace">3</td><td style="text-align:left; color:var(--text-dim)">ran, but some file failed to review — <strong style="color:var(--text)">not</strong> a pass</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--text-dim); font-size:0.86rem; margin-top:12px;">Blocking is checked before failures, so a partial failure can never mask a confirmed blocking finding behind a softer code. 3 is distinct from 2 so a hook can tell "reviewed nine of ten files" from "arbiter never started".</p>
+  </div>
+</section>
+
+<section id="cost">
+  <div class="wrap">
+    <h2 class="section-title">What a run costs</h2>
+    <p class="section-sub">Every run reports its own usage, to stderr and at the foot of the report — <code class="inline">&lt;N&gt; model calls · &lt;in&gt; in (&lt;pct&gt;% cached) / &lt;out&gt; out tokens · ~$&lt;estimate&gt;</code>. Four measured runs, all with verification on:</p>
+
+    <div class="table-scroll">
+      <table class="data">
+        <thead><tr><th>Repo</th><th style="text-align:left">Scope</th><th>Calls</th><th>Cost</th><th>Per file</th></tr></thead>
+        <tbody>
+          <tr><td>tessera</td><td style="text-align:left; color:var(--text-dim)">2 shell files</td><td>24</td><td>$0.73</td><td>$0.37</td></tr>
+          <tr><td>tessera</td><td style="text-align:left; color:var(--text-dim)">7 Python files</td><td>—</td><td>$2.74</td><td>$0.39</td></tr>
+          <tr><td>arbiter</td><td style="text-align:left; color:var(--text-dim)">3 large Python files</td><td>34</td><td>$1.54</td><td>$0.51</td></tr>
+          <tr class="highlight"><td>conclave</td><td style="text-align:left">1 shell file, 287 lines</td><td>12</td><td>$0.79</td><td>$0.79</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="color:var(--text-dim); font-size:0.84rem; margin-top:12px;"><strong style="color:var(--text)">Per-file cost is not stable — it ranges 2× with file size</strong>, so "files changed" is the wrong unit to estimate in. Note also that only <em>reviewable</em> files cost anything: the conclave branch changed 114 files, but 113 were logs and result data, so one file was reviewed. All four rows predate prompt caching and are now upper bounds.</p>
+
+    <h3 style="font-size:1.15rem; margin:40px 0 14px;">Rough estimator</h3>
+    <div class="est">
+      <div class="est-row">
+        <label for="fileCount">Reviewable files</label>
+        <input type="range" id="fileCount" min="1" max="30" value="6">
+        <span class="est-val" id="fileCountVal">6</span>
+      </div>
+      <div class="est-row">
+        <label>Typical file size</label>
+        <div class="seg" data-group="size">
+          <button data-v="0.37">small — shell / short module</button>
+          <button class="sel" data-v="0.51">medium — a few hundred lines</button>
+          <button data-v="0.79">large — 300+ dense lines</button>
+        </div>
+      </div>
+      <div class="est-row">
+        <label>Verification</label>
+        <div class="seg" data-group="verify">
+          <button class="sel" data-v="1">on — default</button>
+          <button data-v="0.5">off — <code class="inline">--no-verify</code></button>
+        </div>
+      </div>
+      <div class="est-out">
+        <div class="money" id="estMoney">$2.20 – $3.06</div>
+        <div class="note" id="estNote"></div>
+      </div>
+    </div>
+    <p style="color:var(--text-dim); font-size:0.82rem; margin-top:12px;">Extrapolated from four measured runs, not a quote. The low end applies the one measured caching result (−29%); the high end is the pre-caching per-file rate. Pricing is indicative list price and will drift — treat it as "cents or dollars", not an invoice. There is <strong style="color:var(--text)">no cost cap</strong>: a large branch can be expensive and nothing stops it mid-run.</p>
+
+    <h3 style="font-size:1.15rem; margin:40px 0 10px;">Where the money actually goes</h3>
+    <p style="color:var(--text-dim); font-size:0.9rem; max-width:760px;">Verification is most of the spend — it triples the call count (~12 per file rather than 4) because every turn resends the conversation. What that 3× buys is <strong style="color:var(--text)">filtering, not volume</strong>: the same number of findings, but roughly three times as many dropped by triage.</p>
+    <p style="color:var(--text-dim); font-size:0.9rem; max-width:760px; margin-top:14px;">Prompt caching takes most of the resend cost back. The finders' system prompt and tool definitions cache together, and so does the verification transcript, so turn N reads turns 1..N−1 instead of re-paying for them. Measured end-to-end on one 230-line Python file at <code class="inline">--jobs 1</code>: 6 calls, 75,552 prompt tokens, <strong style="color:var(--text)">50% served from cache, $0.17</strong> — against $0.24 at full input rate.</p>
+    <p class="quote">Triage is deliberately <em>not</em> cached, and the number is why: its prefix measures 1017 and 1024 tokens against a 1024-token minimum. A breakpoint there would silently cache nothing half the time — and a marker that caches nothing is worse than no marker, because it reads as done.</p>
+  </div>
+</section>
+
+<section id="verification">
+  <div class="wrap">
+    <h2 class="section-title">Verification, and the security boundary</h2>
+    <p class="section-sub">The reviewer and second pass can run <em>read-only</em> inspections before reporting a claim — check what a diff really contains, grep for a symbol's other uses, read a file at the pinned ref. On by default, and the single change that most improved finding quality: on its first run with any inspection tool at all, it found two allowlist bypasses in its own newly-written security code.</p>
+
+    <div class="grid-2">
+      <div class="card" style="border-color:rgba(224,107,107,0.35)">
+        <span class="badge">Replaced</span>
+        <h3>A command string with an allowlist</h3>
+        <p>An earlier version took a command and allowlisted <code class="inline">argv[0]</code>. An independent review found <strong style="color:var(--text)">five confirmed ways through it</strong> — <code class="inline">python3 -c</code> (a whole interpreter), a repo-supplied binary whose basename matched, attached-value options like <code class="inline">sort -o/etc/evil</code>, <code class="inline">awk 'BEGIN{system()}'</code>, and <code class="inline">sed -i.bak</code> writing to the tree. The first patch was the wrong shape too: seven of eight exploits still worked, because <code class="inline">-i.bak</code> is not <code class="inline">-i</code>.</p>
+      </div>
+      <div class="card" style="border-color:rgba(94,201,168,0.35)">
+        <span class="badge">Current</span>
+        <h3>Typed tools, argv built here</h3>
+        <p>The model supplies parameters — <code class="inline">read_file(path, ref)</code>, <code class="inline">search(pattern, path, ref)</code>, <code class="inline">git_diff(...)</code>, <code class="inline">git_log(...)</code> — and the argument vector is constructed in-process. No position where model input becomes a binary or a flag. Paths and refs are rejected if absolute, containing <code class="inline">..</code>, or beginning with <code class="inline">-</code>; patterns go through <code class="inline">-e</code> so they cannot be read as options.</p>
+      </div>
+    </div>
+
+    <p class="quote">A general-purpose Unix tool is a language, and you cannot enumerate the dangerous sentences in a language.</p>
+
+    <div class="callout" style="margin-top:26px;">
+      <strong>This boundary is young.</strong> The typed-tool rewrite has a handful of live runs behind it, none of them adversarial, and <strong>the current design has never been independently reviewed at all</strong>. The argument for it is that it removes the category — model input never reaches argv, no interpreter, no free text to a shell — not that it has been proven in use. The model chooses what to inspect after reading a diff, and a diff can contain text written by someone else, so this is a prompt-injection surface. <strong>Reviewing a change from someone you do not trust: use <code class="inline" style="color:var(--accent-3)">--no-verify</code>, or run it in a container.</strong>
+    </div>
+  </div>
+</section>
+
+<section id="usage">
+  <div class="wrap">
+    <h2 class="section-title">Using it</h2>
+    <p class="section-sub">Reviews <code class="inline">.py .sh .bash .zsh .ts .tsx .js .jsx .sql</code> by default; <code class="inline">--ext</code> overrides. Uncommitted work is never reviewed — everything comes from git.</p>
+    <div class="tabs" id="usageTabs">
+      <button class="tab-btn active" data-tab="install">Install</button>
+      <button class="tab-btn" data-tab="common">Common runs</button>
+      <button class="tab-btn" data-tab="scoping">Scoping the spend</button>
+      <button class="tab-btn" data-tab="hook">In a hook</button>
+    </div>
+    <div class="tab-panel active" data-panel="install">
+      <div class="code-wrap"><button class="copy-btn">copy</button><pre class="code"><span class="c"># Python 3.13+, ANTHROPIC_API_KEY in the environment or a .env</span>
+git clone https://github.com/lciacci/arbiter &amp;&amp; cd arbiter
+uv sync
+uv run arbiter --help</pre></div>
+    </div>
+    <div class="tab-panel" data-panel="common">
+      <div class="code-wrap"><button class="copy-btn">copy</button><pre class="code"><span class="c"># Review the current branch against main</span>
+arbiter --base main
+
+<span class="c"># Review another repo from anywhere</span>
+arbiter --repo ~/code/thing --base main
+
+<span class="c"># A specific commit range, written to markdown</span>
+arbiter --base HEAD~3 --head HEAD --out review.md
+
+<span class="c"># Machine-readable: findings plus the usage record</span>
+arbiter --json</pre></div>
+    </div>
+    <div class="tab-panel" data-panel="scoping">
+      <div class="code-wrap"><button class="copy-btn">copy</button><pre class="code"><span class="c"># --path is the lever. Repeatable; prefixes or globs.</span>
+arbiter --path src/arbiter --path 'tests/*.py'
+
+<span class="c"># Roughly halves a run. Also: use this for code you do not trust.</span>
+arbiter <span class="f">--no-verify</span>
+
+<span class="c"># Cheaper and noisier: no triage, everything lands advisory</span>
+arbiter <span class="f">--no-triage</span></pre></div>
+    </div>
+    <div class="tab-panel" data-panel="hook">
+      <div class="code-wrap"><button class="copy-btn">copy</button><pre class="code"><span class="c"># The exit codes are designed for this — but read the note below first.</span>
+arbiter --base "$(git merge-base HEAD origin/main)" || exit 1</pre></div>
+      <p style="color:var(--text-dim); font-size:0.86rem; margin-top:14px;"><strong style="color:var(--text)">Not wired up as a hook here, deliberately.</strong> At 1–2 minutes and $0.79–$2.74 a run it is too slow and too expensive to fire automatically, and since severity started gating the exit code, the exit-1 path has not triggered on real code once — so its precision <em>at the tier that gates</em> is unmeasured. Run it by hand until that is known.</p>
+    </div>
+  </div>
+</section>
+
+<section id="evidence">
+  <div class="wrap">
+    <h2 class="section-title">What the numbers do and don't say</h2>
+    <p class="section-sub">The pattern comes from <a href="https://houseofyeti.com/pr-arbiter/">pr-arbiter</a>, a research POC measured against a 20-PR corpus of planted bugs. Read the result honestly before trusting this tool more than it has earned.</p>
+
+    <div class="tabs" id="evTabs">
+      <button class="tab-btn active" data-tab="poc">The POC result</button>
+      <button class="tab-btn" data-tab="h2h">Head-to-head</button>
+      <button class="tab-btn" data-tab="field">Findings in the field</button>
+    </div>
+
+    <div class="tab-panel active" data-panel="poc">
+      <div class="grid-2">
+        <div class="card">
+          <span class="badge">Phase 1 — code review</span>
+          <h3>7/8 vs 6/8 criticals</h3>
+          <p>The multi-agent configuration caught 7 of 8 criticals against 6 of 8 for the best single-agent reviewer, at comparable precision — <strong style="color:var(--accent-2)">on one seed</strong>.</p>
+        </div>
+        <div class="card">
+          <span class="badge">Phase 2 — code generation</span>
+          <h3>The effect largely vanished</h3>
+          <p>Ported to code generation and re-run across 3 seeds, multi-agent scored 34/39 against 32/39 for solo — same direction, roughly half the effect size the single-seed pilot suggested.</p>
+        </div>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;">So: the architecture is <strong style="color:var(--text)">directionally useful and thinly evidenced</strong>. The reason to run arbiter is cost and portability, not a claim that it out-finds the alternatives. All of it measured on Sonnet 4.6.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="h2h">
+      <p style="color:var(--text-dim); font-size:0.92rem; max-width:760px; margin-top:0;">A workflow-backed <code class="inline">/code-review</code> (31 agents, 1.3M tokens, ~9 min) and arbiter (~4 calls/file, ~2 min) reviewed the <strong style="color:var(--text)">same diff</strong>:</p>
+      <div class="findings-list" style="margin-top:18px;">
+        <div class="finding"><span class="icon">🤝</span><div class="body"><strong>Both found</strong><br>The exit-code collision, and the too-narrow exception catch.</div></div>
+        <div class="finding"><span class="icon">✅</span><div class="body"><strong>arbiter alone</strong><br><code class="inline">validate</code> not enforcing <code class="inline">rationale</code>.</div></div>
+        <div class="finding"><span class="icon">❌</span><div class="body"><strong><code class="inline">/code-review</code> alone: eight further defects</strong><br>Including that arbiter's own rename fix was half-applied — the diff pathspec still named one side, so git emitted an all-added "new file" diff contradicting the before-state. arbiter had reviewed that file twice and reported it clean both times.</div></div>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;"><strong style="color:var(--text)">Why it missed them — not context.</strong> Every missed defect was inside one file, most within twenty lines of itself. The gap was that the workflow's agents ran git in scratch repos and introspected the installed SDK, while arbiter's could only reason from text. That is what produced the verification tooling. A head-to-head <em>since</em> verification landed has never been run.</p>
+    </div>
+
+    <div class="tab-panel" data-panel="field">
+      <p style="color:var(--text-dim); font-size:0.92rem; max-width:760px; margin-top:0;">Six blocking/advisory findings from real runs on three repos, each verified by hand before acting. The pattern that held every time: <strong style="color:var(--text)">the finder is better at locating than at concluding.</strong></p>
+      <div class="findings-list" style="margin-top:18px;">
+        <div class="finding"><span class="icon">🎯</span><div class="body"><strong>tessera — real, fixed</strong><br>A found-but-crashing script set its found-flag on the same line as the interpreter call, suppressing the <code class="inline">degraded</code> report the change existed to emit. In code written an hour earlier <em>to close a silent-failure bug</em>, which its author had already tested hard.</div></div>
+        <div class="finding"><span class="icon">🎯</span><div class="body"><strong>tessera — the jq-absent fallback</strong><br>A glob matched <code class="inline">*'"source"'*'"startup"'*</code>, which does not require <code class="inline">startup</code> to be <code class="inline">source</code>'s own value. Verified: a crafted payload triggers the re-anchor the guard exists to prevent. Found in shell, on the first foreign-repo try, for $0.73.</div></div>
+        <div class="finding"><span class="icon">🌓</span><div class="body"><strong>conclave — observation right, consequence wrong</strong><br>It spotted a watchdog subshell leaking its <code class="inline">sleep</code> child, then claimed the orphan goes on to fake an rc=137 on the next invocation. It cannot — killing the subshell kills the sequence. Verified by running a reduced copy. The real defect is a leaked <code class="inline">sleep</code> per task: cosmetic.</div></div>
+        <div class="finding"><span class="icon">🌓</span><div class="body"><strong>tessera — right instinct, wrong justification, taken anyway</strong><br>It claimed a per-project tally keyed by directory name would merge same-named projects. The premise is false — the discovery glob is single-parent, so names are unique by construction. Taken regardless, for a reason it never gave: a merged counter would hold a counting predicate quiet, and it should not depend on a property of a different function.</div></div>
+        <div class="finding"><span class="icon">💤</span><div class="body"><strong>conclave — inert</strong><br><code class="inline">env -C</code> called non-portable. True only for macOS &lt;13; works on the actual machine and on GNU coreutils ≥8.28.</div></div>
+        <div class="finding"><span class="icon">💤</span><div class="body"><strong>tessera — inert</strong><br>Restore scripts not <code class="inline">chmod +x</code>'d, argued to silently skip an install via an <code class="inline">[ -x ]</code> probe. The probe is <code class="inline">[ -f ]</code> and the file runs as <code class="inline">python3 &lt;path&gt;</code>; the exec bit is irrelevant.</div></div>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;">Verifying the repro before acting caught the wrong consequence every time it appeared. That is the recommended way to read arbiter's output: trust the <em>location</em>, check the <em>story</em>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <h2 class="section-title">Where it loses</h2>
+    <p class="section-sub">Known limits, including one open bug that outranks most of the feature list — because a review that is narrower than it claims makes every clean result unfalsifiable.</p>
+
+    <div class="findings-list">
+      <div class="finding" style="border-color:rgba(224,107,107,0.45)"><span class="icon">🚨</span><div class="body"><strong>OPEN — extensionless files are silently skipped</strong><br><code class="inline">is_reviewable()</code> filters on suffix, so a shebang script with no extension is dropped, the output still reads "N file(s) reviewed · 0 blocking", and <code class="inline">--path</code> cannot rescue it because the filter runs first. Two runs against tessera reviewed the tests and skipped the code. Workaround today: <code class="inline">--ext ""</code>, which selects extensionless files only. The fix is three parts, and the first is the one that matters — <strong>say what was skipped</strong>.</div></div>
+      <div class="finding"><span class="icon">📄</span><div class="body"><strong>Per-file review</strong><br>Agents see one file at a time and cannot reason across files in the same change. Worth knowing, but measurably <em>not</em> the binding constraint: every defect arbiter missed in the head-to-head sat inside a single file.</div></div>
+      <div class="finding"><span class="icon">💸</span><div class="body"><strong>No incremental caching and no cost cap</strong><br>A large branch can be expensive and nothing stops it mid-run. <code class="inline">--path</code> is the lever.</div></div>
+      <div class="finding"><span class="icon">🧪</span><div class="body"><strong>False positives on request-derived input — partially addressed</strong><br>The reviewer now has to trace where an attacker-controlled value actually enters before reporting an injection-class finding. Whether that holds up outside this repo is untested.</div></div>
+      <div class="finding"><span class="icon">⚖️</span><div class="body"><strong>Not a substitute for a heavier review</strong><br>2 of 3 real defects found, 8 missed, against a 31-agent workflow on the same diff. It is a cheap first pass and it is honest about being one. Two independent looks at the same security boundary produced six exploits between them, one apiece missed by the other — that is an argument for running both, not for picking one.</div></div>
+    </div>
+
+    <h3 style="font-size:1.15rem; margin:44px 0 8px;">Fail-open — the recurring defect</h3>
+    <p class="section-sub" style="margin-bottom:20px;">Not one bug, a pattern — five instances, several written by whoever had just fixed the previous one. Each was defensive in intent. A review tool's worst failure is not a wrong finding; it is a confident silence over code it never looked at.</p>
+    <div id="failOpenList"></div>
+    <p class="quote">When adding a fallback here, ask what a <em>gate</em> will conclude from it. If the answer is "pass", it is wrong. And any narrowing of scope must appear in the output, or the report is a false green.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="mark-row">
+    <svg width="22" height="22" viewBox="0 0 24 24">
+      <circle cx="8" cy="12" r="7.5" fill="#5ec9a8" opacity="0.85"/>
+      <circle cx="16" cy="12" r="7.5" fill="#d9a64e" opacity="0.85"/>
+      <rect x="11.4" y="2" width="1.2" height="20" fill="#0b0d12" opacity="0.8"/>
+    </svg>
+  </div>
+  <div class="reading-guide">
+    <a href="https://github.com/lciacci/arbiter">github.com/lciacci/arbiter — source and README</a>
+    <a href="https://github.com/lciacci/arbiter/blob/main/docs/STATE.md">docs/STATE.md — how it got here, and every measurement behind this page</a>
+    <a href="https://github.com/lciacci/pr-arbiter">github.com/lciacci/pr-arbiter — the frozen research POC the pattern came from</a>
+    <a href="https://houseofyeti.com/pr-arbiter/">houseofyeti.com/pr-arbiter — the POC's numbers, in full</a>
+  </div>
+  arbiter — a cheap, portable adversarial second opinion, positioned as a first pass and nothing more. Every cost and recall figure on this page comes from a named run recorded in <code class="inline">docs/STATE.md</code>; all of them are model-conditional, measured on Sonnet 4.6, and will drift with pricing.
+</footer>
+
+<script>
+  (function buildMosaic() {
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    const cols = 14, rows = 9, size = 90;
+    svg.setAttribute("viewBox", "0 0 " + (cols*size) + " " + (rows*size));
+    svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+    const colors = ["#161a23","#161a23","#161a23","#161a23","#17281f","#241f17","#1b222e"];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("x", c*size + 1);
+        rect.setAttribute("y", r*size + 1);
+        rect.setAttribute("width", size - 2);
+        rect.setAttribute("height", size - 2);
+        rect.setAttribute("rx", 6);
+        rect.classList.add("tile");
+        rect.style.fill = colors[Math.floor(Math.random()*colors.length)];
+        svg.appendChild(rect);
+      }
+    }
+    document.getElementById("mosaicBg").appendChild(svg);
+  })();
+
+  // ---------- tabs (generic: any .tabs + sibling .tab-panel set in the same section) ----------
+  document.querySelectorAll(".tabs").forEach(bar => {
+    const scope = bar.closest("section");
+    bar.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        bar.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        scope.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        scope.querySelector('.tab-panel[data-panel="' + btn.dataset.tab + '"]').classList.add("active");
+      });
+    });
+  });
+
+  // ---------- copy buttons ----------
+  document.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const text = btn.parentElement.querySelector("pre").innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = "copied";
+        setTimeout(() => { btn.textContent = "copy"; }, 1400);
+      }).catch(() => { btn.textContent = "select + copy"; });
+    });
+  });
+  document.querySelector(".hero-cmd").addEventListener("click", function () {
+    navigator.clipboard.writeText(this.textContent).catch(() => {});
+  });
+
+  // ---------- triage simulator ----------
+  const sim = { a: "keep", b: "keep", sev: "high" };
+  const KNOWN_SEV = ["low", "medium", "high", "critical"];
+
+  document.querySelectorAll(".sim-opts").forEach(group => {
+    group.querySelectorAll(".opt").forEach(btn => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll(".opt").forEach(b => b.classList.remove("sel"));
+        btn.classList.add("sel");
+        sim[group.dataset.group] = btn.dataset.v;
+        renderVerdict();
+      });
+    });
+  });
+
+  function renderVerdict() {
+    const { a, b, sev } = sim;
+    let tier, why;
+    if (a === "keep" && b === "keep") {
+      tier = "blocking";
+      why = "Both voices independently voted KEEP, so the finding is promoted to the <strong>blocking</strong> tier — the short list you are meant to actually read.";
+    } else if (a === "drop" && b === "drop") {
+      tier = "dropped";
+      why = "Both voices voted DROP, so the finding never reaches the report. This is the precision lever the architecture exists for — roughly a third of findings get dropped outright.";
+    } else {
+      tier = "advisory";
+      why = "The voices disagree, or one abstained, so the finding lands <strong>advisory</strong> — reported in full, but never a reason to fail. Disagreement is not treated as evidence either way.";
+    }
+
+    const gates = tier === "blocking" && (!KNOWN_SEV.includes(sev) || sev === "high" || sev === "critical");
+    let exitWhy;
+    if (tier !== "blocking") {
+      exitWhy = "Only blocking findings can fail the process.";
+    } else if (!KNOWN_SEV.includes(sev)) {
+      exitWhy = "The severity could not be parsed. That gates rather than passes — it is model output, and the safe direction is to stop.";
+    } else if (sev === "high" || sev === "critical") {
+      exitWhy = "Severity is " + sev + ", so the run exits 1 and a hook would reject the commit.";
+    } else {
+      exitWhy = "Severity is " + sev + ". It is reported in full and still reads as blocking, but it does not fail the process — a gate that cries wolf gets bypassed.";
+    }
+
+    const badge = document.getElementById("vBadge");
+    badge.textContent = tier;
+    badge.className = "verdict-badge " + tier;
+    document.getElementById("vText").innerHTML = why + " " + exitWhy;
+    const pill = document.getElementById("vExit");
+    pill.textContent = gates ? "exit 1" : "exit 0";
+    pill.className = "exit-pill " + (gates ? "fail" : "pass");
+  }
+  renderVerdict();
+
+  // ---------- cost estimator ----------
+  const est = { files: 6, rate: 0.51, verify: 1 };
+  const CACHE_FACTOR = 0.71; // one measured run: 50% of prompt tokens cached, ~29% off
+
+  document.getElementById("fileCount").addEventListener("input", e => {
+    est.files = +e.target.value;
+    document.getElementById("fileCountVal").textContent = est.files;
+    renderEstimate();
+  });
+  document.querySelectorAll(".seg").forEach(group => {
+    group.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll("button").forEach(b => b.classList.remove("sel"));
+        btn.classList.add("sel");
+        est[group.dataset.group === "size" ? "rate" : "verify"] = +btn.dataset.v;
+        renderEstimate();
+      });
+    });
+  });
+
+  function renderEstimate() {
+    const high = est.files * est.rate * est.verify;
+    const low = high * CACHE_FACTOR;
+    const fmt = n => "$" + n.toFixed(2);
+    document.getElementById("estMoney").textContent = fmt(low) + " – " + fmt(high);
+    const calls = Math.round(est.files * (est.verify === 1 ? 12 : 4));
+    document.getElementById("estNote").innerHTML =
+      "≈ " + calls + " model calls" +
+      (est.verify === 1
+        ? ", verification on — about 12 per file, because every turn resends the conversation."
+        : ", verification off — 4 per file, and the finders can no longer check a claim before reporting it.") +
+      " Only <em>reviewable</em> files count: logs, data and fixtures are free.";
+  }
+  renderEstimate();
+
+  // ---------- fail-open accordion ----------
+  const FAIL_OPEN = [
+    ["1", "A <code class=\"inline\">{}</code> return from a missing tool_use block", "It read as “no findings.” The absence of a parseable response and the presence of a clean file are not the same event, and the report could not tell them apart."],
+    ["2", "A swallowed GitError in <code class=\"inline\">_content_at</code>", "It read as “new file.” The review then compared the change against an empty before-state and drew conclusions from a diff that never existed."],
+    ["3", "A triage UNSURE default that hid total ballot failure", "The model returned <code class=\"inline\">votes</code> as a JSON <em>string</em> that was itself invalid JSON — rationales quote the code under review, so a finding about a shell glob put quotes and backslashes into the payload. Every finding fell to UNSURE, which meant advisory, which meant zero blocking, reported as a clean review. Two hypotheses were formed and both were wrong before one commit logged the ballot and answered it immediately. <strong>Instrument before hypothesising.</strong>"],
+    ["4", "Nearly a fifth, caught in review", "<code class=\"inline\">_SEV_RANK.get(sev, 0)</code> was the obvious thing to reuse for the new severity gate, and its unknown-sorts-last default would have meant an unparseable severity passes. The gate deliberately does not use it."],
+    ["5", "The scope itself — and it is still open", "<code class=\"inline\">is_reviewable()</code> drops extensionless files, so a run printed “1 file(s) reviewed · 0 blocking” having never opened the shebang script that was the entire subject of the change. The docstring is honest about the filter, and that is what made it dangerous: the escape hatch it recommends (<code class=\"inline\">--path</code>) runs <em>after</em> the filter and cannot rescue anything. A second, unrelated tool hit the identical blind spot in the same repo."],
+    ["6", "The instrument had the same bug, twice over", "The ballot was built with <code class=\"inline\">zip(merged, rv, av)</code>, which truncates to the shortest list — so the diagnostic added to catch missing votes under-reported precisely when votes went missing. A missing vote is now recorded as <code class=\"inline\">\"missing\"</code> rather than borrowing the <code class=\"inline\">\"unsure\"</code> fallback: both tier the finding advisory, but one means the voice abstained and the other means it was never heard. <strong>The instrument needs the same scrutiny as the thing it measures.</strong>"]
+  ];
+  const fo = document.getElementById("failOpenList");
+  FAIL_OPEN.forEach(f => {
+    const item = document.createElement("div");
+    item.className = "accordion-item";
+    item.innerHTML =
+      '<div class="accordion-head">' +
+        '<div class="accordion-num">' + f[0] + '</div>' +
+        '<div class="accordion-title">' + f[1] + '</div>' +
+        '<div class="accordion-chevron">&#9662;</div>' +
+      '</div>' +
+      '<div class="accordion-body"><p>' + f[2] + '</p></div>';
+    item.querySelector(".accordion-head").addEventListener("click", () => item.classList.toggle("open"));
+    fo.appendChild(item);
+  });
+</script>
+
+</body>
+</html>
