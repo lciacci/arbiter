@@ -118,6 +118,12 @@ it because it was "only logging". Found by ruff (B905), fixed in `db50d16`.
   corrected). The commit trail went 15 behind in a day, then 6 behind within an
   hour of being fixed. Both are now either removed or declared curated with
   `git log` authoritative. Prefer a command in the doc over a number in the doc.
+  **The published page is the copy nothing scans.** `docs/promo/index.html` (live
+  at `houseofyeti.com`) restates the four-run cost table, the extensionless-file
+  bug as OPEN, "the security boundary has never been independently reviewed", and
+  "the hook is deliberately unwired". Fixing the START HERE item below flips the
+  second one false — re-read the page when it lands, and it is deployed by sftp,
+  so a commit here does not update the site.
 
 **START HERE — reviews are silently narrower than they claim (2026-07-29).**
 `is_reviewable()` filters on file extension, so extensionless shebang scripts are
