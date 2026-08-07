@@ -136,27 +136,36 @@ it because it was "only logging". Found by ruff (B905), fixed in `db50d16`.
   hour of being fixed. Both are now either removed or declared curated with
   `git log` authoritative. Prefer a command in the doc over a number in the doc.
   **The published page is the copy nothing scans.** `docs/promo/index.html` (live
-  at `houseofyeti.com`) restates the four-run cost table, the extensionless-file
-  bug as OPEN, "the security boundary has never been independently reviewed", and
-  "the hook is deliberately unwired". Fixing the START HERE item below flips the
-  second one false — re-read the page when it lands, and it is deployed by sftp,
-  so a commit here does not update the site.
+  at `houseofyeti.com`) restates the four-run cost table, "the security boundary
+  has never been independently reviewed", and "the hook is deliberately unwired".
+  It carried the extensionless-file bug as OPEN; `975b491` fixed the bug and the
+  page in the same pass — **that is the drill.** The page is deployed by sftp, so
+  a commit here does not update the site; it needs an upload.
 
-**START HERE — reviews are silently narrower than they claim (2026-07-29).**
-`is_reviewable()` filters on file extension, so extensionless shebang scripts are
-dropped and **nothing in the output says so**. Two runs against tessera printed
-"1 file(s) reviewed · 0 blocking" having never opened the file under review;
-re-run with `--ext ""` the same diffs produced two blocking findings, one of them
-real and fixed. `--path` cannot rescue it — `is_reviewable` runs before
-`matches_any` in `change_units()`, so the docstring's own advice ("pass an
-explicit path list") is not honoured by the CLI.
+**START HERE — confirm the scope fix on a real branch (2026-08-07, `975b491`).**
+The previous START HERE is done. Reviews used to be silently narrower than they
+claimed: `is_reviewable()` filtered on extension, extensionless shebang scripts
+were dropped, and nothing in the output said so. All three parts landed —
+skipped files are named in both the stderr line and the report body, `--path`
+runs first and is authoritative, and extensionless files are picked up by
+shebang. 264 tests green.
 
-This is item 7 in `STATE.md`'s priority list and instance 5 under *Fail-open*.
-It outranks the quality questions: a review narrower than it claims makes every
-clean result unfalsifiable, and this tool's whole value is that a green means
-something. **Do the cheapest part first — print what was skipped.** Even with the
-filter unchanged, an announced skip is a ceiling; an unannounced one is a false
-green. Then make `--path` authoritative, then detect by shebang.
+**What is not done is the confirmation, and it costs one run.** Point arbiter at
+the tessera commit from the original account (`--base 84c63cc`, `bin/tessera-watch`)
+and check that the blocking finding which previously needed `--ext ""` now shows
+up on a default run. Everything so far is unit-tested against a synthetic repo;
+nothing has run the fixed path against the diff that exposed the bug. Under $1.
+
+Two decisions inside the fix are recorded in `STATE.md` item 7 so they don't get
+re-litigated: **any `#!` counts** (not an interpreter allowlist — the prompts are
+language-agnostic and an allowlist restores the silent drop for perl), and
+**`--ext` does not disable shebang sniffing** (a file with no extension is not a
+member of any extension set; leaving it to `--ext` restores the same drop under a
+different flag). `--path` is the lever for narrowing.
+
+Then re-read the promo page and `docs/INTEGRATION.md` — both are updated in the
+same commit as this, but the page is deployed by sftp, so **a commit here does not
+update the live site.**
 
 **Still open, lower priority:** an observatory entry for Tessera on whether hook
 payload parsing should be a shared tested helper (`FINDINGS.md` F-001 — second

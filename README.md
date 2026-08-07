@@ -73,7 +73,11 @@ arbiter --no-verify
 arbiter --json
 ```
 
-Reviews `.py .sh .bash .zsh .ts .tsx .js .jsx .sql` by default. `--ext` overrides.
+Reviews `.py .sh .bash .zsh .ts .tsx .js .jsx .sql` by default, plus any
+extensionless file that starts with a shebang. `--ext` sets the extension list;
+`--path` overrides scope outright and is honoured before anything else. Whatever
+is left unreviewed is named in the report — a file this tool declines to open is
+a ceiling on the clean result it prints, so it never goes unstated.
 
 ### Exit codes
 
@@ -224,8 +228,11 @@ drift; treat it as "cents or dollars", not an invoice. Drivers, in order:
   The reviewer now has to trace where an attacker-controlled value actually
   enters before reporting an injection-class finding. Whether that holds up
   outside this repo is untested.
-- **Extension sniffing misses extensionless shell scripts** (git hooks,
-  `scripts/gate`). Pass explicit paths if you care about those.
+- **Scope is still extension-driven, but no longer silently.** Extensionless
+  files are picked up by shebang, `--path` overrides everything, and anything
+  dropped is listed in the report. A file with an extension outside the set
+  (`.md`, `.json`, `.tf`) still needs `--ext` or `--path` — it is now announced
+  rather than assumed.
 - **No incremental caching and no cost cap.** A large branch can be expensive
   and nothing stops it mid-run.
 - **Not a substitute for a heavier review.** Measured head-to-head against a

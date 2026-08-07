@@ -43,6 +43,8 @@ annotation, not the completeness; pure `docs:` commits are left out.
 | `6e6a80a` | `ref_label` on abbreviated SHAs; the two-arg diff disambiguated |
 | `eef0cdc` | **severity gates the exit code** — see item 1 |
 | `db50d16` | CLAUDE.md scaffold filled; ruff added; the ballot truncation it found |
+| `46c42e3` | prompt caching on the finder prefix and the verification transcript |
+| `975b491` | **scope stops lying** — skipped files reported, `--path` authoritative, shebang detection |
 
 ## The measurement that matters
 
@@ -257,29 +259,44 @@ is an argument for running both, not for picking one.
 6. **Triage was broken and is now fixed** — see below. Resolved, kept here
    because the *way* it was found is the transferable part.
 
-7. **OPEN, and it is the control-surface bug: reviews silently skip
-   extensionless files** (2026-07-29, found from tessera — full account under
-   *Fail-open* below). `is_reviewable()` filters on suffix, so a shebang script
-   with no extension is dropped, the output still reads
-   "N file(s) reviewed · 0 blocking", and `--path` cannot override it because
-   `is_reviewable` runs first in `change_units()`. Two runs against tessera
-   reviewed the tests and skipped the code.
+7. **FIXED 2026-08-07 (`975b491`) — the control-surface bug: reviews silently
+   skipped extensionless files** (found 2026-07-29 from tessera — full account
+   under *Fail-open* below, kept because the account is the transferable part).
+   `is_reviewable()` filtering on suffix meant a shebang script was dropped
+   while the output still read "N file(s) reviewed · 0 blocking", and `--path`
+   could not override it because `is_reviewable` ran first in `change_units()`.
+   Two runs against tessera reviewed the tests and skipped the code.
 
-   This outranks most of the list because it is not a quality question — a
-   review that is *narrower than it claims* makes every clean result
-   unfalsifiable. Three parts, and the first is the one that matters:
+   It outranked the quality questions because it was not a quality question — a
+   review *narrower than it claims* makes every clean result unfalsifiable. All
+   three planned parts landed in one commit:
 
-   - **Say what was skipped.** Print dropped paths and a count in the summary,
-     always. Even with the filter unchanged, an announced skip is a ceiling; an
-     unannounced one is a false green. Cheapest fix, largest effect, no
-     behaviour change.
-   - **Make `--path` authoritative.** A path the caller named explicitly should
-     bypass the extension filter — that is what the docstring already promises.
-   - **Detect by shebang.** `#!` + `python|bash|sh|zsh|node` on line 1 for
-     extensionless files. Tessera solved the same problem in its iCPG extractor
-     (ADR-0017) and the approach carries over.
+   - **Say what was skipped.** `change_units` returns `(units, skipped)`;
+     both the stderr line and the report body name the dropped paths, and the
+     stderr line prints *before* the "no reviewable changes" early return —
+     the path where a false green was cheapest to produce.
+   - **`--path` is authoritative** and runs first. A named path is reviewed
+     whether or not it looks like code, which is what the docstring had been
+     promising and the CLI had been refusing.
+   - **Shebang detection**, gated on `has_extension` so it costs one `git show`
+     per extensionless changed file and nothing for the rest. Tessera hit the
+     identical blind spot in its iCPG extractor (ADR-0017).
 
-   `--ext ""` is the current workaround and selects extensionless files only.
+   Two decisions inside it worth not re-litigating. **Any `#!` counts**, not the
+   `python|bash|sh|zsh|node` allowlist sketched here earlier — the agents'
+   prompts are language-agnostic, so an allowlist would only restore the silent
+   drop for perl. And **`--ext` does not disable shebang sniffing**: a file with
+   no extension is not a member of any extension set, so leaving it to `--ext`
+   would restore the same drop under a different flag. `--path` is the lever for
+   narrowing.
+
+   `--ext ""` was the workaround and is no longer needed. What still needs a
+   flag is a file with an extension *outside* the set — and that is now printed
+   rather than assumed.
+
+   **Unmeasured:** the fix has not been run against a real branch. The blocking
+   finding that `--ext ""` surfaced from tessera should now appear on a default
+   run, and nothing has confirmed that end to end.
 
 ## The triage bug, and two wrong diagnoses before it
 
@@ -385,9 +402,10 @@ fixed the previous one. Each was defensive in intent:
    the new severity gate in `eef0cdc`, and its unknown-sorts-last default would
    have meant an unparseable severity passes. `findings.gates_exit` deliberately
    does not use it.
-5. **A real fifth, and it is not a fallback — it is the SCOPE (2026-07-29).**
-   `is_reviewable()` filters on file extension, so extensionless files are
-   dropped. Found from tessera: `arbiter --base 84c63cc` printed
+5. **A real fifth, and it is not a fallback — it is the SCOPE (2026-07-29,
+   fixed 2026-08-07 in `975b491`; the account stands because the shape is the
+   transferable part).** `is_reviewable()` filtered on file extension, so
+   extensionless files were dropped. Found from tessera: `arbiter --base 84c63cc` printed
    **"1 file(s) reviewed · 0 blocking"** having never opened
    `bin/tessera-watch` — a `#!/usr/bin/env python3` file with no suffix, and
    the entire subject of the change. Re-run with `--ext ""` it produced a
@@ -413,6 +431,15 @@ fixed the previous one. Each was defensive in intent:
    (its ADR-0017 — `symbols.py` dispatched on extension, so iCPG saw 84 of 260
    code files, 32% of the repo). Two unrelated tools, same repo, same blind
    spot. Shebang detection is the fix in both cases; tessera already wrote one.
+
+   **What the fix generalises to, and it is the reason to read this entry
+   rather than the diff:** the first two bullets above are one defect stated
+   twice — a filter and a *report of what the filter did* are different
+   features, and shipping the first without the second is what makes a true
+   sentence ("1 file(s) reviewed") into a false claim. Every other silent
+   `continue` in that loop was the same bug waiting; the emptied-file skip was
+   one and is now reported too. **A component that narrows scope owes the caller
+   a list, not a count.**
 
 **The rule, and instance 5 widens it: when adding a fallback here, ask what a
 *gate* will conclude from it. If the answer is "pass", it is wrong.** A silent

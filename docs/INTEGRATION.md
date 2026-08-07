@@ -110,16 +110,25 @@ portable*, explicitly not "better than `/code-review`".
   a **Watching** entry in `../tessera/docs/observatory.md` — deliberately not built at n=2. Revisit
   triggers: a third peer pair, or the same fact found missing a second time.
 
-## One arbiter fact that binds Tessera, recorded so it crosses
+## One arbiter fact that binds Tessera — FIXED 2026-08-07, and this is the notification
 
-`is_reviewable()` filters on file extension, so **extensionless shebang scripts are dropped and the
-output does not say so** — it prints "N file(s) reviewed · 0 blocking" over files it never opened.
-Tessera's entire control surface is ~21 extensionless files in `bin/` (~4,500 lines), including
-`tessera-verify` and `tessera-watch`, so **Tessera's own control surface has never been reviewable
-by arbiter's default**. Tessera carries this as standing pattern #12 (*a report can be entirely TRUE
-and still be a false green — ask what it did NOT cover*). Until the scope default changes, any run
-against Tessera or conclave needs `--ext ""`, and `--path` cannot rescue it because `is_reviewable`
-runs first.
+`is_reviewable()` filtered on file extension, so **extensionless shebang scripts were dropped and
+the output did not say so** — it printed "N file(s) reviewed · 0 blocking" over files it never
+opened. Tessera's entire control surface is ~21 extensionless files in `bin/` (~4,500 lines),
+including `tessera-verify` and `tessera-watch`, so **Tessera's own control surface was never
+reviewable by arbiter's default**. Tessera carries this as standing pattern #12 (*a report can be
+entirely TRUE and still be a false green — ask what it did NOT cover*).
+
+**`975b491` closes it.** Extensionless files are picked up by shebang; `--path` runs first and is
+authoritative; anything still dropped is named in the report body, not only on stderr. **A run
+against Tessera or conclave no longer needs `--ext ""`.**
+
+Two caveats before Tessera treats this as settled. **(1) Unconfirmed on a real branch** — the fix is
+unit-tested against a synthetic repo, and nothing has yet re-run the `bin/tessera-watch` diff that
+exposed the bug to check the blocking finding now surfaces by default. **(2) Pattern #12 is not
+retired by it.** The fix makes the skip *stated*, which is a narrower claim than "nothing was
+skipped" — a file with an extension outside the set is still dropped, and the report telling you so
+is exactly what pattern #12 says to go looking for.
 
 ---
 
