@@ -11,6 +11,19 @@ Read `docs/STATE.md` first; it has the annotated commit trail, both head-to-head
 results, and why things are the way they are. Then `docs/FINDINGS.md` for the
 Tessera-facing channel. This prompt is the short version plus what to do next.
 
+> **NEW 2026-08-07 — `docs/INTEGRATION.md` exists now, and a lane you own was renamed.**
+> arbiter had no stub in the three-project system until this date; the canonical contract listed one
+> for `pr-arbiter` and none for its successor. Written by Tessera in the same pass that renamed the
+> **Pattern** lane `pr-arbiter` → `arbiter` (Lorenzo signed for arbiter; conclave had flagged the
+> inconsistency in place rather than fixing it, which was the right call).
+>
+> **Nothing in this repo's code or roadmap changes.** It is a map correction, notified here rather
+> than left to be discovered. Two things in the stub are worth reading once, because they bind work
+> here: **guard (b)** — role diversity pays, model diversity measured at +0.000 recall / +20 FP, so
+> *don't add a fleet later* — and **"arbiter is not a gate, and nothing gates it"**, which is why
+> the canonical's open decision D2 closed as moot. If arbiter is ever wired into something blocking
+> (CI required-check, pre-commit, Stop hook), **D2 reopens** and that is Tessera's call to make.
+
 **What this is.** A CLI that runs an adversarial code review over a git ref
 range: reviewer → independent second pass → two-voice KEEP/DROP/UNSURE triage →
 blocking/advisory output. Exit 1 on a blocking finding at high or critical. The

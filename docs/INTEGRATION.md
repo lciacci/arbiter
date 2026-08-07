@@ -1,0 +1,127 @@
+# arbiter in the three-project system — stub
+
+> **Canonical contract:** `../tessera/docs/contracts/three-project-cohesion.md` (Tessera-hosted,
+> peer contract; hosting ≠ ownership). This file is a STUB — arbiter's own lane + the shared
+> anti-conflation guards. For the full map (layering, all seams, sequencing, open decisions) read
+> the canonical. If this stub and the canonical disagree, the canonical wins.
+
+**Written 2026-08-07.** arbiter had no stub until now: the canonical listed one for `pr-arbiter` and
+none for its successor, while three of its rows already named `arbiter` as a lane owner. Created as
+part of the same pass that renamed the lane — see below.
+
+## ⚠ The Pattern lane was renamed `pr-arbiter` → `arbiter`. This is the notification.
+
+The canonical's **Pattern** row, its title, its stub list and its engine-evidence paths all still
+named `pr-arbiter`, which is frozen. Conclave found the inconsistency on 2026-08-07 and deliberately
+**flagged it in place with a precedence rule rather than fixing it** — renaming a lane is that
+lane's owner's sign-off to give, not a third party's. Correct call, and worth copying.
+
+- **Lorenzo signed for `arbiter`; Tessera made the edit** (`tessera@main`, 2026-08-07).
+- Engine evidence paths moved `../pr-arbiter/agents/{reviewer,arbiter,triage}.py` →
+  `src/arbiter/{reviewer,second_pass,triage}.py`.
+- `pr-arbiter` still appears in the canonical **only** where it is cited as the frozen research
+  study it now is — chiefly guard (d), which is about its *numbers*.
+
+**Nothing in arbiter's code or roadmap changes because of this.** It is a map correction. Flagged
+here because a lane renamed without its owner knowing is exactly the failure the flag-don't-fix rule
+was protecting against.
+
+## The three layers
+
+| Layer | Project | Owns |
+|---|---|---|
+| **Substrate** | **Conclave** (`../conclave`) | Model serving — the tier ladder (`local-tiny` → `local-mid` 30B-A3B → `lab` 80B → `frontier`) behind one OpenAI-compatible, Tailscale-private gateway. The measurement instrument (`orchestrator/divergence.py`, `orchestrator/fleet_pairwise.py`). |
+| **Pattern** | **`arbiter`** (this repo) | The multi-ROLE, union-recall review engine: reviewer → independent second pass → two-voice KEEP/DROP/UNSURE triage. The typed-finding schema. Successor to pr-arbiter, which is frozen. |
+| **Policy** | **Tessera** (`../tessera`) | Governance (gate / verify / watch / escalation) and the routing / escalation *decisions* — *when* review runs. Hosts the canonical contract. |
+
+**Directionality.** arbiter is **downstream of Tessera on governance** — it adopted `.tessera/` at
+scaffold, so it runs the framework and its `docs/FINDINGS.md` feeds Tessera's backlog (canonical S5;
+D4 resolved). It is a **runtime peer** of conclave. Governance flows down; inference flows up.
+
+## arbiter's lane
+
+- **Owns:** the review *engine* and the typed-finding schema. How review works.
+- **Must NOT:** decide **when** review runs or on **which tier** — that is Tessera's policy lane —
+  or **serve** the models, which is conclave's. **arbiter is a pattern, not a policy and not a
+  substrate. It is not a gate, and nothing gates it.**
+
+That last sentence is load-bearing and is why canonical **D2 closed as moot** on 2026-08-07: the
+open decision "adopt the union-recall metric as Tessera's review-fan-out gate" had no gate to be.
+**If arbiter is ever wired into something that blocks — CI required-check, pre-commit, Stop hook —
+D2 reopens**, and that wiring is Tessera's call to make, not arbiter's.
+
+## Anti-conflation guards (mirrored here because they bind work IN this repo)
+
+**(a) Conclave's "judge/ensemble doesn't pay" null is SELECT-BEST only** — do **NOT** cite it to
+block arbiter's **union-recall** review. Select-best picks one best answer and saturates as models
+converge; union-recall wants *every distinct true bug* N reviewers find, and that headroom does not
+saturate the same way. Consistent, not contradictory.
+
+**(b) The diversity that pays is ROLE, NOT MODEL.** One strong model plus role-differentiated
+prompts. **No fleet for review.** This is the guard that binds arbiter most directly, and its
+forward-looking form is: **don't add a fleet later.**
+
+> Measured on the adversarial path (`../conclave/orchestrator/s2_model_axis.py`, 2026-07-28), arms
+> matched at two passes: best single (claude reviewer) **0.509 recall / 30 FP**; **ROLE**-diverse
+> union **0.618 / 35 FP**; **MODEL**-diverse union **0.509 / 50 FP**. MODEL diversity bought
+> **+0.000 recall and +20 false positives, with zero decorrelated catches.** The scorer reproduces
+> pr-arbiter's committed numbers to 4dp on their matcher and their expected findings.
+>
+> **BOUND — do not over-read it.** The second arm was a ~7× *weaker* model (qwen 30B alone: 0.073
+> recall, 0/8 criticals). A weak model's findings are a near-subset, so it *cannot* add union-recall;
+> the result is close to true by construction. **Directionally supportive, not settling.** The open
+> measurable is **peer-strength**: does a second *frontier* model decorrelate? Unmeasured.
+>
+> **arbiter holds the countervailing anecdote**, and the canonical cites this repo for it: arbiter
+> and a workflow-backed `/code-review` looked at the same security boundary and produced six exploits
+> between them, one apiece missed by the other (`docs/STATE.md`, "Round 2"). That is a peer-strength
+> union-recall gain — but **confounded**, since the two differ in *architecture* (31 agents / 1.3M
+> tokens vs ~4 calls per file), not only in model. Conclave has a paid experiment queued to settle
+> it and is deliberately not spending yet, partly on the chance a `/code-review` head-to-head on the
+> typed-tool build answers it for free.
+
+**(c) Serving tiers ≠ routing policy.** Conclave *exposes* tiers; Tessera decides **when** to use
+them. A tier existing is not a decision to route to it.
+
+**(d) The frozen study's numbers are thin.** pr-arbiter's Phase-1 critical-recall win is **7/8 vs
+6/8 on one seed**, and the Phase-2 generation lift ~vanished under 3-seed variance. **Gate any build
+on the instrument, not on the headline.** arbiter's positioning already reflects this — *cheap and
+portable*, explicitly not "better than `/code-review`".
+
+## The seams that touch arbiter
+
+- **S1 — inference gateway.** arbiter is deliberately **not** Claude-Code-bound: plain Python
+  against the Anthropic SDK with a bare client, so `ANTHROPIC_BASE_URL` points it at conclave's
+  gateway **with no code change**.
+  > **Bound, and it is the reason not to spend a session on a cheaper finder model.** Mechanically
+  > true ≠ usefully served. Conclave's local 30B scores **0.073 recall / 0-of-8 criticals** on
+  > structured adversarial review — measured on *this project's own corpus* — against claude's 0.509,
+  > while **matching** a hosted 80B on edit-and-apply. **Task SHAPE, not model tier, is the
+  > escalation trigger, and review is the shape that breaks the local tier.**
+  > (`../conclave/docs/LOCAL-CODER-FAILURES.md`.)
+- **S4 — review pattern → `/arbiter`.** arbiter owns the engine; **Tessera owns the `/arbiter`
+  surface and the when-to-invoke.** The pattern graduated 2026-07-28. Still ADR-gated on **D3**,
+  whose one remaining prerequisite is a stable conclave fleet standing at a tier that can review —
+  on current evidence `lab`/`frontier`, not `local-mid`.
+- **S5 — findings feedback.** `docs/FINDINGS.md` in this repo feeds Tessera's backlog via
+  `tessera-findings`, surfaced at Tessera's SessionStart. **Note the known gap:** that channel is
+  hub-directed — there is no addressee field, so a finding meant for a *peer* (conclave) has no
+  channel and rides a coordination doc or a human. Raised as conclave F-002, disposed 2026-08-07 as
+  a **Watching** entry in `../tessera/docs/observatory.md` — deliberately not built at n=2. Revisit
+  triggers: a third peer pair, or the same fact found missing a second time.
+
+## One arbiter fact that binds Tessera, recorded so it crosses
+
+`is_reviewable()` filters on file extension, so **extensionless shebang scripts are dropped and the
+output does not say so** — it prints "N file(s) reviewed · 0 blocking" over files it never opened.
+Tessera's entire control surface is ~21 extensionless files in `bin/` (~4,500 lines), including
+`tessera-verify` and `tessera-watch`, so **Tessera's own control surface has never been reviewable
+by arbiter's default**. Tessera carries this as standing pattern #12 (*a report can be entirely TRUE
+and still be a false green — ask what it did NOT cover*). Until the scope default changes, any run
+against Tessera or conclave needs `--ext ""`, and `--path` cannot rescue it because `is_reviewable`
+runs first.
+
+---
+
+Full context in this repo: `docs/STATE.md` (annotated commit trail, both head-to-heads, the
+fail-open list), `docs/NEXT_SESSION.md` (what to do next), `docs/FINDINGS.md` (the Tessera channel).
