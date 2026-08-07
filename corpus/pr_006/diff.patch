@@ -1,0 +1,24 @@
+--- before.py	2026-05-13 20:40:05.279031573 +0000
++++ after.py	2026-05-13 20:40:13.055115449 +0000
+@@ -365,3 +365,21 @@
+             samesite=samesite,
+         )
+         response.vary.add("Cookie")
++
++
++def is_session_expired(session_data: dict, max_age_seconds: int) -> bool:
++    """Check whether a session has exceeded its maximum age.
++
++    :param session_data: Decoded session dict containing a 'created_at'
++        timestamp (unix epoch seconds).
++    :param max_age_seconds: Maximum allowed session age.
++    :return: True if the session is expired or invalid, False otherwise.
++    """
++    import time
++
++    created = session_data.get("created_at")
++    if not created:
++        return False
++
++    age = time.time() - created
++    return age > max_age_seconds

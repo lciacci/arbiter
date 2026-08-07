@@ -1,0 +1,15 @@
+--- before.py	2026-05-13 21:02:23.139142307 +0000
++++ after.py	2026-05-13 21:02:32.551898183 +0000
+@@ -40,11 +40,7 @@
+     :param default: What to return if the env var isn't set.
+     """
+     val = os.environ.get("FLASK_SKIP_DOTENV")
+-
+-    if not val:
+-        return default
+-
+-    return val.lower() in ("0", "false", "no")
++    return val.lower() in ("0", "false", "no") if val else default
+ 
+ 
+ def stream_with_context(

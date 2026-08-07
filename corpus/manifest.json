@@ -1,0 +1,49 @@
+{
+  "corpus_version": "0.1.0",
+  "source_repo": "pallets/flask",
+  "source_version": "3.0.0",
+  "total_prs": 20,
+  "summary": {
+    "by_category": {
+      "planted_bug": 14,
+      "negative_control": 3,
+      "style_nitpick_with_latent_bug": 3
+    },
+    "by_persona": {
+      "Marcus": 5,
+      "Priya": 5,
+      "Devon": 6,
+      "Alex": 4
+    },
+    "by_severity": {
+      "critical": 8,
+      "high": 11,
+      "medium": 18,
+      "low": 18
+    },
+    "total_expected_findings": 55,
+    "negative_control_pr_ids": ["pr_002", "pr_007", "pr_018"]
+  },
+  "prs": [
+    {"id": "pr_001", "persona": "Priya",  "category": "planted_bug",                   "source_file": "helpers.py"},
+    {"id": "pr_002", "persona": "Marcus", "category": "negative_control",              "source_file": "config.py"},
+    {"id": "pr_003", "persona": "Devon",  "category": "style_nitpick_with_latent_bug", "source_file": "json/__init__.py"},
+    {"id": "pr_004", "persona": "Marcus", "category": "planted_bug",                   "source_file": "helpers.py"},
+    {"id": "pr_005", "persona": "Marcus", "category": "planted_bug",                   "source_file": "cli.py"},
+    {"id": "pr_006", "persona": "Marcus", "category": "planted_bug",                   "source_file": "sessions.py"},
+    {"id": "pr_007", "persona": "Marcus", "category": "negative_control",              "source_file": "helpers.py"},
+    {"id": "pr_008", "persona": "Priya",  "category": "planted_bug",                   "source_file": "cli.py"},
+    {"id": "pr_009", "persona": "Priya",  "category": "planted_bug",                   "source_file": "templating.py"},
+    {"id": "pr_010", "persona": "Priya",  "category": "planted_bug",                   "source_file": "sessions.py"},
+    {"id": "pr_011", "persona": "Priya",  "category": "planted_bug",                   "source_file": "config.py"},
+    {"id": "pr_012", "persona": "Devon",  "category": "planted_bug",                   "source_file": "wrappers.py"},
+    {"id": "pr_013", "persona": "Devon",  "category": "planted_bug",                   "source_file": "helpers.py"},
+    {"id": "pr_014", "persona": "Devon",  "category": "planted_bug",                   "source_file": "app.py"},
+    {"id": "pr_015", "persona": "Devon",  "category": "planted_bug",                   "source_file": "blueprints.py"},
+    {"id": "pr_016", "persona": "Devon",  "category": "planted_bug",                   "source_file": "wrappers.py"},
+    {"id": "pr_017", "persona": "Alex",   "category": "planted_bug",                   "source_file": "config.py"},
+    {"id": "pr_018", "persona": "Alex",   "category": "negative_control",              "source_file": "helpers.py"},
+    {"id": "pr_019", "persona": "Alex",   "category": "planted_bug",                   "source_file": "helpers.py"},
+    {"id": "pr_020", "persona": "Alex",   "category": "style_nitpick_with_latent_bug", "source_file": "(synthetic test file)"}
+  ]
+}

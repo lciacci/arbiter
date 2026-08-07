@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_006",
+  "category": "planted_bug",
+  "persona": "Marcus",
+  "summary": "Adds a session expiry checker. The implementation has an insecure default and a sentinel-value bug that pass silently.",
+  "source": "pallets/flask v3.0.0 src/flask/sessions.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [378, 379],
+      "description": "Insecure default. When 'created_at' is missing from the session, the function returns False (treat as fresh/valid). For an expiry check the safe default is to treat unknown sessions as expired (return True) or to raise. A session missing its creation timestamp should not be silently accepted as valid."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [378, 378],
+      "description": "Falsy check 'if not created' is wrong for a timestamp. created_at == 0 (unix epoch) is a legitimate value that will be treated as missing. Should be 'if created is None'."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [375, 375],
+      "description": "Local import of time inside the function. Imports should be at module top."
+    }
+  ],
+  "should_not_flag": [
+    "Lack of timezone handling — time.time() returns unix epoch which is timezone-independent. This is correct.",
+    "Using float comparison directly — appropriate here since both sides are floats and exact precision is not required for second-granularity checks.",
+    "Missing input validation that session_data is a dict — type hint declares it, and Flask's session is always a dict-like."
+  ],
+  "notes_for_arbiter": "F1 is a security-relevant correctness bug. Even though the function 'works' for the happy path, the failure mode is dangerous. F2 is the kind of bug that hides in test fixtures and surfaces only in edge cases. Both are characteristic Marcus bugs: code that reads cleanly but has wrong semantics in the unhappy path. F3 is a nit."
+}

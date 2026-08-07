@@ -1,0 +1,20 @@
+--- before.py	2026-05-13 20:41:49.187029196 +0000
++++ after.py	2026-05-13 20:41:49.193998833 +0000
+@@ -365,3 +365,17 @@
+             samesite=samesite,
+         )
+         response.vary.add("Cookie")
++
++
++import hashlib
++
++
++def verify_api_token(provided: str, expected: str) -> bool:
++    """Verify a user-provided API token against the expected value.
++
++    Hashes both sides before comparison so the raw token never appears
++    in memory comparisons. Returns True if they match.
++    """
++    provided_hash = hashlib.sha256(provided.encode()).hexdigest()
++    expected_hash = hashlib.sha256(expected.encode()).hexdigest()
++    return provided_hash == expected_hash

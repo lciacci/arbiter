@@ -1,0 +1,59 @@
+{
+  "pr_id": "pr_015",
+  "category": "planted_bug",
+  "persona": "Devon",
+  "summary": "Registers a /send-email endpoint that reads JSON and queues a message. Zero input validation; multiple ways to crash or abuse.",
+  "source": "pallets/flask v3.0.0 src/flask/blueprints.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        97,
+        100
+      ],
+      "description": "No validation on request.get_json(). If the body is not JSON, get_json() returns None and the subsequent data['to'] raises TypeError. If keys are missing, KeyError. Either use request.get_json(silent=True) and check, or use a schema validator (pydantic, marshmallow), or wrap in a try/except that returns 400."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [
+        95,
+        105
+      ],
+      "description": "Open email relay. Endpoint accepts arbitrary 'to' addresses with no auth check and no rate limiting. An attacker can use this to send spam or phishing from your domain. Needs authentication, recipient allowlist (or restriction to authenticated user's own address), and rate limiting."
+    },
+    {
+      "id": "F3",
+      "category": "security",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        99,
+        99
+      ],
+      "description": "Email body is taken raw from user input and queued. If the email rendering layer interprets HTML or templates this without escaping, header injection (newlines in 'to'/'subject') or HTML injection in the body becomes possible. Validate subject for CRLF and treat body content according to the email content-type."
+    },
+    {
+      "id": "F4",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        109,
+        109
+      ],
+      "description": "Module-level _email_queue is initialized to None and 'initialized at app startup' per comment. If the endpoint is called before startup completes, _email_queue.put raises AttributeError. Use lazy initialization or fail loudly on None."
+    }
+  ],
+  "should_not_flag": [
+    "The local import of flask inside the function \u2014 common pattern for registration helpers and avoids circular imports.",
+    "Returning a hardcoded {'status': 'queued'} \u2014 appropriate for a fire-and-forget endpoint.",
+    "Using POST for an action \u2014 correct REST semantics for a side-effecting operation."
+  ],
+  "notes_for_arbiter": "This PR has four blocking issues and they are all real. A noisy reviewer might also flag the lack of logging or the lack of correlation IDs \u2014 those are nice-to-haves, not blockers, and arbiter should demote. Devon shipping an unauthenticated POST that takes arbitrary recipients is exactly the kind of bug that survives review at companies without strong security culture."
+}

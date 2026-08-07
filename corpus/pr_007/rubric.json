@@ -1,0 +1,15 @@
+{
+  "pr_id": "pr_007",
+  "category": "negative_control",
+  "persona": "Marcus",
+  "summary": "Extracts the environment-variable-as-bool parsing logic from get_load_dotenv into a private helper _parse_env_bool. Semantically identical; no behavior change.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [],
+  "should_not_flag": [
+    "The refactor itself — extracting a private helper for a 4-line block that will be reused is reasonable.",
+    "The fact that the helper has only one current caller — extracting in anticipation of future reuse is fine, and the helper name documents intent.",
+    "The 'not val' check carrying over from the original — unchanged behavior is not a new bug.",
+    "Lack of tests for a pure refactor — existing tests for get_load_dotenv cover the behavior."
+  ],
+  "notes_for_arbiter": "Pure refactor. Empty review is correct. If the reviewer flags the underscore prefix as 'unnecessary' or wants the helper public, the arbiter should reject (private helpers are conventional in Python and the leading underscore documents intent). The 'if not val' check is preserved from the original — flagging it on this PR would be flagging behavior the refactor didn't introduce."
+}

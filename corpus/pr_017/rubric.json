@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_017",
+  "category": "planted_bug",
+  "persona": "Alex",
+  "summary": "Modifies Config.from_object to also load lowercase attributes by default, uppercasing them on store. Changes documented public API behavior; default value is the breaking choice.",
+  "source": "pallets/flask v3.0.0 src/flask/config.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [198, 238],
+      "description": "Breaking change to public API. The documented and long-standing behavior of from_object is to load ONLY uppercase attributes. Existing users rely on this — they put helper functions, internal constants, and __builtin__ attributes on their config modules expecting them to be ignored. The new default 'lowercase=True' will silently start loading those as config keys. The default must be False to preserve backwards compatibility. Better: do not change defaults; if lowercase support is desired, add a separate method like from_object_all()."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [237, 238],
+      "description": "Name collision unhandled. If an object has both 'debug' (lowercase) and 'DEBUG' (uppercase), the iteration order of dir() determines which wins. Result depends on Python version and class definition order — non-deterministic from the user's perspective. Should detect collisions and raise."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [229, 229],
+      "description": "Docstring updated for the new parameter but the larger semantic change is not called out. A breaking change requires a versionchanged directive and migration notes in the docstring."
+    }
+  ],
+  "should_not_flag": [
+    "The skip-underscore-prefix logic — that's a reasonable precaution, not a bug.",
+    "Use of .upper() on attribute names — correct way to normalize.",
+    "Adding a parameter to a public method — adding parameters is fine; the issue is the default value, not the parameter."
+  ],
+  "notes_for_arbiter": "F1 is the architectural mistake — exactly the Alex pattern of 'helpful' improvements that break the contract. A reviewer that says 'cool, useful feature' has failed. The arbiter must reject any framing that treats this as an additive change; defaults make it a breaking change. F2 is a real edge case that surfaces in production. F3 is a documentation nit."
+}

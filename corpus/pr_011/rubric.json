@@ -1,0 +1,48 @@
+{
+  "pr_id": "pr_011",
+  "category": "planted_bug",
+  "persona": "Priya",
+  "summary": "Adds a session-state loader that deserializes a bytes blob from an external cache. Uses pickle, with a type check on the input.",
+  "source": "pallets/flask v3.0.0 src/flask/config.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        355,
+        355
+      ],
+      "description": "Pickle deserialization on untrusted input enables arbitrary code execution. An attacker who can write to the session cache (compromised Redis, MITM, or any code path that can influence cache contents) can craft a payload that executes arbitrary code when pickle.loads is called. Use json or msgpack for cache serialization, or sign the pickle blob with HMAC and verify before loading. The isinstance check provides no security \u2014 bytes is exactly what an attacker provides."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        358,
+        358
+      ],
+      "description": "Return type annotated as dict, but pickle.loads can deserialize any picklable type. If the cache is corrupted to contain a non-dict, callers will receive an unexpected type without warning. Either validate the deserialized type or relax the annotation to Any."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        353,
+        353
+      ],
+      "description": "Local import of pickle inside the function. Imports should be at module top \u2014 though in this case it may be intentional to make the use of pickle more visible."
+    }
+  ],
+  "should_not_flag": [
+    "The isinstance(bytes) check itself \u2014 it's redundant given the type hint, but it's not harmful.",
+    "Lack of error handling around pickle.loads \u2014 adding try/except would not address the security issue.",
+    "Function being 'too simple' \u2014 simplicity is not the problem here, the choice of serialization is."
+  ],
+  "notes_for_arbiter": "F1 is the only finding that matters and it must be marked blocking. A reviewer that proposes 'add a try/except around pickle.loads' has profoundly missed the point. The isinstance check is a tell that the author was thinking about safety in the wrong dimension \u2014 they validated the *type* of input rather than the *trust* of input. F3 is borderline; some style guides accept lazy imports for heavy modules. Arbiter may demote or drop."
+}

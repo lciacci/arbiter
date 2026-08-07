@@ -1,0 +1,70 @@
+{
+  "pr_id": "pr_001",
+  "category": "planted_bug",
+  "persona": "Priya",
+  "summary": "Adds a new send_user_file helper that takes a directory and a user-supplied filename. The implementation has multiple planted defects.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        575,
+        582
+      ],
+      "description": "Path traversal vulnerability. os.path.join allows user-supplied filename to escape the intended directory (e.g., '../../etc/passwd'). Should use werkzeug.security.safe_join or send_from_directory, which already exists in this module."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        567,
+        567
+      ],
+      "description": "Hardcoded secret/API token in source code. AUDIT_TOKEN is a credential and must be loaded from configuration or environment, not committed to source."
+    },
+    {
+      "id": "F3",
+      "category": "security",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        573,
+        578
+      ],
+      "description": "Sensitive data in logs. The log statement records user email (PII) and the audit token (credential) in plaintext log output."
+    },
+    {
+      "id": "F4",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        583,
+        584
+      ],
+      "description": "Broad exception swallow. 'except Exception: pass' hides all errors and the function returns None on failure, which violates the declared Response return type and will cause downstream type errors."
+    },
+    {
+      "id": "F5",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        569,
+        569
+      ],
+      "description": "Local import of logging inside the function. Imports should be at module top."
+    }
+  ],
+  "should_not_flag": [
+    "The existing send_from_directory function (unchanged in this PR) \u2014 reviewers should focus on diff content, not unchanged code.",
+    "The use of os.path.join in general \u2014 it is fine in trusted contexts; the issue is specifically combining it with untrusted user input.",
+    "Module docstring or imports unrelated to the new function."
+  ],
+  "notes_for_arbiter": "F1 through F4 are legitimate issues a senior reviewer would block on. F5 is a nit \u2014 the arbiter should keep F5 but mark it as low-priority/non-blocking. If the reviewer fabricates additional findings (e.g., flags the unchanged send_from_directory), the arbiter must reject them."
+}

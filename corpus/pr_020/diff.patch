@@ -1,0 +1,46 @@
+--- before.py	2026-05-13 21:03:18.008995774 +0000
++++ after.py	2026-05-13 21:03:24.267599834 +0000
+@@ -1,23 +1,31 @@
+ """Tests for config loading."""
++from unittest.mock import MagicMock, patch
+ from flask import Flask
+ 
+ 
+ def test_from_object_loads_uppercase():
+     app = Flask(__name__)
+ 
+-    class C:
+-        DEBUG = True
+-        SECRET = "abc"
+-        lowercase = "ignored"
+-
+-    app.config.from_object(C)
+-    assert app.config["DEBUG"] is True
+-    assert app.config["SECRET"] == "abc"
+-    assert "lowercase" not in app.config
++    mock_class = MagicMock()
++    mock_class.DEBUG = True
++    mock_class.SECRET = "abc"
++    mock_class.lowercase = "ignored"
++
++    with patch("flask.config.import_string", return_value=mock_class):
++        with patch.object(app.config, "__setitem__") as mock_setitem:
++            app.config.from_object(mock_class)
++
++    set_keys = [call.args[0] for call in mock_setitem.call_args_list]
++    assert "DEBUG" in set_keys
++    assert "SECRET" in set_keys
+ 
+ 
+ def test_from_mapping_basic():
+     app = Flask(__name__)
+-    app.config.from_mapping({"FOO": 1, "BAR": 2})
+-    assert app.config["FOO"] == 1
+-    assert app.config["BAR"] == 2
++    mock_mapping = MagicMock()
++    mock_mapping.items.return_value = [("FOO", 1), ("BAR", 2)]
++
++    with patch.object(app.config, "update") as mock_update:
++        app.config.from_mapping(mock_mapping)
++
++    assert mock_update.called or app.config.get("FOO") == 1

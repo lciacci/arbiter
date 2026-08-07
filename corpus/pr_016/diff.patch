@@ -1,0 +1,21 @@
+--- before.py	2026-05-13 21:01:25.871138903 +0000
++++ after.py	2026-05-13 21:01:30.078448763 +0000
+@@ -171,3 +171,18 @@
+ 
+         # return Werkzeug's default when not in an app context
+         return super().max_cookie_size
++
++
++def make_error_response(message: str, error_code: str = "unknown") -> tuple:
++    """Build a JSON error response.
++
++    Returns a (body, status_code) tuple suitable for Flask view return.
++    """
++    from flask import jsonify
++
++    body = jsonify({
++        "error": error_code,
++        "message": message,
++        "success": False,
++    })
++    return body, 200

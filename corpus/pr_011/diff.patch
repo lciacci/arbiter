@@ -1,0 +1,20 @@
+--- before.py	2026-05-13 20:42:15.867028586 +0000
++++ after.py	2026-05-13 20:42:20.006759610 +0000
+@@ -345,3 +345,17 @@
+ 
+     def __repr__(self) -> str:
+         return f"<{type(self).__name__} {dict.__repr__(self)}>"
++
++
++def load_session_state(state_blob: bytes) -> dict:
++    """Deserialize a session state blob into a dict.
++
++    Used to restore session state from external caches (Redis, memcached).
++    Validates that the input is bytes before deserializing.
++    """
++    import pickle
++
++    if not isinstance(state_blob, bytes):
++        raise TypeError("state_blob must be bytes")
++
++    return pickle.loads(state_blob)

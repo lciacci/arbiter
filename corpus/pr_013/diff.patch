@@ -1,0 +1,20 @@
+--- before.py	2026-05-13 21:00:11.287134469 +0000
++++ after.py	2026-05-13 21:00:15.664000717 +0000
+@@ -621,3 +621,17 @@
+         out.extend(_split_blueprint_path(name.rpartition(".")[0]))
+ 
+     return out
++
++
++def paginate(items: list, page: int, per_page: int = 20) -> list:
++    """Return a single page from a list of items.
++
++    Pages are 1-indexed: page=1 returns items 0 through per_page-1.
++
++    :param items: The full list of items.
++    :param page: The page number, starting at 1.
++    :param per_page: Number of items per page.
++    """
++    start = (page - 1) * per_page
++    end = start + per_page + 1
++    return items[start:end]

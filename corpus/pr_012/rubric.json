@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_012",
+  "category": "planted_bug",
+  "persona": "Devon",
+  "summary": "Adds a helper to extract the browser family from a request's User-Agent header. Naive parsing with no null handling and incorrect assumptions about the format.",
+  "source": "pallets/flask v3.0.0 src/flask/wrappers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [180, 180],
+      "description": "Missing None check. request.user_agent can be None or have a None string attribute when the header is missing. Accessing .string on None raises AttributeError, and .split on None raises AttributeError. Should handle missing UA explicitly and return a sentinel like 'unknown'."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [181, 182],
+      "description": "Incorrect parsing assumption. Most real User-Agent strings start with 'Mozilla/5.0' regardless of browser — Chrome, Firefox, Safari, and Edge all do. This function will return 'mozilla' for nearly every modern browser, making it useless for its stated purpose. Use werkzeug's user_agent parser or a library like ua-parser."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [177, 177],
+      "description": "Parameter 'request' has no type annotation. Other functions in this module type-annotate. Should be 'Request' or similar."
+    }
+  ],
+  "should_not_flag": [
+    "Lowercasing the result — that's fine, even sensible for case-insensitive comparison.",
+    "The function being a thin wrapper — appropriate scope for a helper.",
+    "Lack of tests — fair to mention but not blocking on a 4-line helper."
+  ],
+  "notes_for_arbiter": "Both F1 and F2 are real and findable on careful read. F2 is the more interesting one because the code 'works' (doesn't crash) but produces wrong output. A reviewer who only catches F1 (the crash) and misses F2 (the wrongness) has caught the obvious half. Classic Devon: enthusiastic, has the right shape but didn't read the actual format of real UA strings."
+}

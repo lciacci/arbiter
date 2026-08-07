@@ -196,6 +196,37 @@ caller in another file. Giving triage the inspection tools is the untried lever,
 and it is the expensive one: verification tripled finder cost, and triage is
 currently the cheap step. **Do not try it without scoring precision.**
 
+### The organic corpus, and why it has to grow
+
+`scripts/eval_corpus.py` scores against **planted** bugs. That is the right
+primary instrument — it has 55 labelled findings, three negative controls, and a
+matcher whose numbers reproduce independently — but planted defects are written
+by someone who knows what a reviewer looks for, and they fail differently from
+the ones that reach production. Guard (d) in `INTEGRATION.md` warns against
+over-reading pr-arbiter's *headline*; the same caution applies to reading its
+corpus as representative.
+
+**The fix is a habit, not a build.** Every real review whose findings get
+verified by hand produces labelled data for free — the defect, its file, its
+line, its severity, and crucially whether a *reported* finding turned out to be
+false. That last part is what the planted corpus supplies through its negative
+controls and what no amount of foreign-repo running gives you unless the false
+positives are written down too.
+
+Entries so far, and the format worth keeping:
+
+- **Round 3 (2026-08-07), 7 defects across `975b491`** — arbiter, a 17-agent
+  workflow and a cloud review, each finding scored. Plus one confirmed false
+  positive (`has_extension` "inverted semantics", wrong in 5 separate runs).
+- **The two tessera `bin/tessera-watch` defects (2026-08-07)** — one verified
+  real including its consequence, one deliberately not adjudicated.
+
+**When the organic set reaches a size where its recall number is not noise, it
+should outrank the planted one for any claim about real-world quality.** Until
+then, quote the planted corpus for changes to the engine and the organic set for
+claims about what the tool does to real branches — and never blend them into one
+number.
+
 ## The measurement that matters (Round 1 — predates the typed-tool rewrite)
 
 A workflow-backed `/code-review` (31 agents, 1.3M tokens, ~9 min) and arbiter

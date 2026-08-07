@@ -1,0 +1,40 @@
+--- before.py	2026-05-13 20:40:32.243030956 +0000
++++ after.py	2026-05-13 20:40:42.392313096 +0000
+@@ -32,14 +32,14 @@
+     return bool(val and val.lower() not in {"0", "false", "no"})
+ 
+ 
+-def get_load_dotenv(default: bool = True) -> bool:
+-    """Get whether the user has disabled loading default dotenv files by
+-    setting :envvar:`FLASK_SKIP_DOTENV`. The default is ``True``, load
+-    the files.
++def _parse_env_bool(name: str, default: bool) -> bool:
++    """Parse an environment variable as a boolean.
+ 
+-    :param default: What to return if the env var isn't set.
++    Returns ``default`` if the variable is unset or empty. Otherwise
++    returns True unless the value matches one of the recognized
++    'falsy' string forms.
+     """
+-    val = os.environ.get("FLASK_SKIP_DOTENV")
++    val = os.environ.get(name)
+ 
+     if not val:
+         return default
+@@ -47,6 +47,16 @@
+     return val.lower() in ("0", "false", "no")
+ 
+ 
++def get_load_dotenv(default: bool = True) -> bool:
++    """Get whether the user has disabled loading default dotenv files by
++    setting :envvar:`FLASK_SKIP_DOTENV`. The default is ``True``, load
++    the files.
++
++    :param default: What to return if the env var isn't set.
++    """
++    return _parse_env_bool("FLASK_SKIP_DOTENV", default)
++
++
+ def stream_with_context(
+     generator_or_function: (
+         t.Iterator[t.AnyStr] | t.Callable[..., t.Iterator[t.AnyStr]]

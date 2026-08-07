@@ -1,0 +1,27 @@
+--- before.py	2026-05-13 21:01:47.639140196 +0000
++++ after.py	2026-05-13 21:02:02.955203710 +0000
+@@ -195,7 +195,7 @@
+         self.from_object(d)
+         return True
+ 
+-    def from_object(self, obj: object | str) -> None:
++    def from_object(self, obj: object | str, lowercase: bool = True) -> None:
+         """Updates the values from the given object.  An object can be of one
+         of the following two types:
+ 
+@@ -226,12 +226,15 @@
+         using :meth:`from_object`.
+ 
+         :param obj: an import name or object
++        :param lowercase: also load lowercase attributes (uppercased on store)
+         """
+         if isinstance(obj, str):
+             obj = import_string(obj)
+         for key in dir(obj):
+             if key.isupper():
+                 self[key] = getattr(obj, key)
++            elif lowercase and not key.startswith("_"):
++                self[key.upper()] = getattr(obj, key)
+ 
+     def from_file(
+         self,

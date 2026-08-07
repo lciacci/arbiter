@@ -1,0 +1,22 @@
+--- before.py	2026-05-13 21:02:48.467143812 +0000
++++ after.py	2026-05-13 21:02:54.314743784 +0000
+@@ -621,3 +621,19 @@
+         out.extend(_split_blueprint_path(name.rpartition(".")[0]))
+ 
+     return out
++
++
++def serve_asset(asset_root: str, asset_name: str) -> Response:
++    """Serve a static asset from the asset root directory.
++
++    Resolves ``asset_name`` against ``asset_root`` and streams the file.
++    """
++    # Normalize and resolve to prevent path escape
++    resolved = os.path.normpath(os.path.join(asset_root, asset_name))
++
++    # Confirm the resolved path is still under asset_root
++    if not resolved.startswith(os.path.normpath(asset_root)):
++        from werkzeug.exceptions import NotFound
++        raise NotFound()
++
++    return werkzeug.utils.send_file(resolved)

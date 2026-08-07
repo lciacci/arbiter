@@ -1,0 +1,48 @@
+{
+  "pr_id": "pr_010",
+  "category": "planted_bug",
+  "persona": "Priya",
+  "summary": "Adds an API token verification helper that hashes both sides before comparing. The author understands that secret comparisons are sensitive but applies the wrong fix.",
+  "source": "pallets/flask v3.0.0 src/flask/sessions.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        377,
+        377
+      ],
+      "description": "Timing-vulnerable comparison. The == operator on strings short-circuits on the first mismatching character, leaking information about the secret via response time. Hashing the inputs first does NOT mitigate this \u2014 the hashes are still compared character-by-character. Use hmac.compare_digest() which is constant-time, ideally on the raw tokens, not on hashes."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        369,
+        376
+      ],
+      "description": "Plain SHA-256 is not appropriate for token verification. If 'expected' is a stored token, it should be a keyed hash (HMAC) or a verifier produced from a password hash function (argon2, scrypt). Plain SHA of the user input doesn't add security \u2014 an attacker who can submit guesses can iterate hashes as fast as raw guesses."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        365,
+        365
+      ],
+      "description": "import hashlib placed mid-file rather than at module top."
+    }
+  ],
+  "should_not_flag": [
+    "The function being too short or 'not enough code' \u2014 concise is fine.",
+    "Lack of explicit length check on the inputs \u2014 hmac.compare_digest handles length differences correctly and doesn't need a pre-check.",
+    "Encoding choice (.encode() defaults to utf-8) \u2014 appropriate for token strings."
+  ],
+  "notes_for_arbiter": "F1 is the classic Priya signature: the developer KNOWS that comparing secrets is sensitive (that's why they added the hashing) but reaches for the wrong tool. The arbiter should reject any reviewer comment that approves of the hashing 'because hashing is good' \u2014 the issue is the comparison operator, not the input form. F2 is a deeper issue worth surfacing even though F1 will dominate review attention."
+}

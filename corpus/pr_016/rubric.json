@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_016",
+  "category": "planted_bug",
+  "persona": "Devon",
+  "summary": "Adds a helper to build JSON error responses. The helper always returns HTTP 200, even though the response represents an error.",
+  "source": "pallets/flask v3.0.0 src/flask/wrappers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [185, 185],
+      "description": "Returns HTTP 200 (OK) for error responses. Clients (including standard HTTP libraries, monitoring tools, CDN error logging) will treat the response as successful. Errors must use 4xx or 5xx status codes. The function signature should accept a status parameter, or the helper should be split into specific error types (bad_request -> 400, not_found -> 404, etc.)."
+    },
+    {
+      "id": "F2",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [175, 175],
+      "description": "Return type annotated as bare 'tuple'. Should be 'tuple[Response, int]' or similar to communicate the shape to callers."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [180, 184],
+      "description": "The 'success: False' field is redundant with the presence of the 'error' field and the HTTP status code (once fixed). Encourages clients to check three different signals for the same information."
+    }
+  ],
+  "should_not_flag": [
+    "Using jsonify rather than json.dumps — jsonify is the Flask idiom.",
+    "Default error_code of 'unknown' — questionable but not wrong; could argue either way.",
+    "Local import of jsonify — common pattern, fine."
+  ],
+  "notes_for_arbiter": "F1 is unambiguous and blocking. The arbiter should not accept any justification for 200-on-error (e.g., 'some APIs do this'). RFC compliance and monitoring tooling both depend on correct status codes. F2 and F3 are nits. The contrast between F1 (clear blocker) and F3 (debatable style) is a good arbiter test."
+}

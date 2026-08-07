@@ -1,0 +1,15 @@
+{
+  "pr_id": "pr_018",
+  "category": "negative_control",
+  "persona": "Alex",
+  "summary": "Collapses get_load_dotenv's early-return-on-falsy into a single conditional expression. Semantically identical to the original. Stylistically debatable but not buggy.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [],
+  "should_not_flag": [
+    "The conditional expression itself — this is valid Python and the readability tradeoff is a matter of taste, not a bug.",
+    "The 'if val else default' pattern — exactly equivalent to the original 'if not val: return default' control flow.",
+    "Missing test changes — pure refactor, no behavior change.",
+    "Use of () for the tuple — preserved from original, stylistically consistent."
+  ],
+  "notes_for_arbiter": "Empty review is correct. A reviewer that says 'I prefer the explicit version' is expressing taste, not finding a bug — the arbiter must drop such comments. The Alex pattern here is the bikeshed-bait diff: small, style-flavored, and tempting to comment on. The discipline being tested is the ability to NOT review style preferences when there is no real issue."
+}

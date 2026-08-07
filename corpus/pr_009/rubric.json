@@ -1,0 +1,48 @@
+{
+  "pr_id": "pr_009",
+  "category": "planted_bug",
+  "persona": "Priya",
+  "summary": "Adds a regex-based HTML sanitizer for user-supplied content. The implementation pattern-matches XSS but is fundamentally insufficient.",
+  "source": "pallets/flask v3.0.0 src/flask/templating.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        225,
+        248
+      ],
+      "description": "Regex-based HTML sanitization is a known anti-pattern and cannot safely sanitize HTML. Bypasses include: single-quoted attributes (on*='alert(1)'), unquoted attributes (onerror=alert(1)), nested tags, javascript: URLs in href/src, <iframe>, <svg onload=...>, data: URIs, malformed tags that browsers tolerate, and many more. The function name suggests safety but provides none. Replace with a proven HTML sanitizer (bleach, nh3) that uses a real HTML parser and an allowlist of tags/attributes."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        222,
+        222
+      ],
+      "description": "Docstring claims the output is safe to use with Jinja's |safe filter. This claim is incorrect (see F1) and dangerous because it instructs future callers to bypass Jinja's auto-escaping based on a false guarantee. Even if the sanitizer were improved, documentation should warn rather than encourage |safe."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        228,
+        228
+      ],
+      "description": "Local import of re inside the function. Imports should be at module top."
+    }
+  ],
+  "should_not_flag": [
+    "The specific regexes themselves \u2014 improving the regex does not fix the architectural problem. A reviewer who suggests 'tighten the regex' has missed the real issue.",
+    "Performance of regex compilation per call \u2014 re module caches compiled patterns; this is fine.",
+    "Lack of tests \u2014 adding tests would only entrench the broken approach."
+  ],
+  "notes_for_arbiter": "F1 is the only finding that matters. A reviewer that proposes regex improvements rather than scrapping the approach has failed the substance test. F2 is real because the docstring is actively misleading. The arbiter should be alert to false positives suggesting 'fix the regex' or 'add more cases' \u2014 those treat the symptom while preserving the architectural mistake."
+}

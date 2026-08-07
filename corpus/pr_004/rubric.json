@@ -1,0 +1,31 @@
+{
+  "pr_id": "pr_004",
+  "category": "planted_bug",
+  "persona": "Marcus",
+  "summary": "Adds a memoization helper for etags. The cache is a plain dict accessed without locking, and check-then-set is not atomic.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [629, 636],
+      "description": "Race condition. Module-level dict is accessed without a lock, and the check-then-set pattern is not atomic. Under concurrent requests two threads can both miss the cache, both call compute_fn (possibly expensive), and the last write wins. For Flask under a threaded WSGI server this is a real concurrency bug. Fix: use threading.Lock, or switch to functools.lru_cache, or accept the duplicate work explicitly and document it."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [625, 625],
+      "description": "Unbounded cache. The dict grows without limit; long-running processes that serve many distinct paths (e.g., user-uploaded content) will leak memory. Should use lru_cache or an explicit size limit."
+    }
+  ],
+  "should_not_flag": [
+    "The type annotation 'dict[str, str]' — this is valid Python 3.9+ syntax and Flask 3.0 requires 3.8+.",
+    "The function being 'too simple' or 'just a dict lookup' — the simplicity is precisely what hides the concurrency bug.",
+    "Missing tests for a single helper — fair to mention, but not blocking. Should be non-blocking suggestion at most."
+  ],
+  "notes_for_arbiter": "Marcus writes code that looks clean. The race condition is the kind of bug an experienced reviewer might miss on a fast pass because the code reads correctly line-by-line. F1 is the substantive find. F2 is real but lower-priority. Watch for the reviewer hallucinating issues about the type annotation style — that's a false positive the arbiter must reject."
+}

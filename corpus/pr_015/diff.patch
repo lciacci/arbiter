@@ -1,0 +1,28 @@
+--- before.py	2026-05-13 21:00:57.175137197 +0000
++++ after.py	2026-05-13 21:00:57.181620704 +0000
+@@ -89,3 +89,25 @@
+             raise ValueError("Resources can only be opened for reading.")
+ 
+         return open(os.path.join(self.root_path, resource), mode)
++
++
++def register_email_handler(bp) -> None:
++    """Register a /send-email endpoint on the given blueprint.
++
++    The endpoint accepts JSON {to, subject, body} and queues an email.
++    """
++    from flask import request, jsonify
++
++    @bp.route("/send-email", methods=["POST"])
++    def send_email():
++        data = request.get_json()
++        to = data["to"]
++        subject = data["subject"]
++        body = data["body"]
++
++        # Queue the message
++        _email_queue.put({"to": to, "subject": subject, "body": body})
++        return jsonify({"status": "queued"})
++
++
++_email_queue: t.Any = None  # initialized at app startup

@@ -1,0 +1,23 @@
+--- before.py	2026-05-13 20:39:04.315032967 +0000
++++ after.py	2026-05-13 20:39:09.158775982 +0000
+@@ -621,3 +621,20 @@
+         out.extend(_split_blueprint_path(name.rpartition(".")[0]))
+ 
+     return out
++
++
++# Module-level cache for static asset etags. Keyed by absolute path.
++_etag_cache: dict[str, str] = {}
++
++
++def get_or_compute_etag(path: str, compute_fn: t.Callable[[str], str]) -> str:
++    """Return a cached etag for the given path, computing it if missing.
++
++    Used by the static file handler to avoid recomputing etags on every
++    request. ``compute_fn`` is called only on cache miss.
++    """
++    if path in _etag_cache:
++        return _etag_cache[path]
++    etag = compute_fn(path)
++    _etag_cache[path] = etag
++    return etag

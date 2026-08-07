@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_003",
+  "category": "style_nitpick_with_latent_bug",
+  "persona": "Devon",
+  "summary": "Adds a new truncate_json_string helper. Surface-level it looks like a style PR (naming, magic number), but there is one latent correctness issue hiding among the nits.",
+  "source": "pallets/flask v3.0.0 src/flask/json/__init__.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [178, 179],
+      "description": "The slice uses a hardcoded 1024 instead of the MaxLen parameter. If a caller passes a different MaxLen, the function will still cut the string at 1024 characters, producing wrong output (either over- or under-truncated). This is a real bug, not a style issue."
+    },
+    {
+      "id": "F2",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [172, 172],
+      "description": "Parameter 'MaxLen' uses CapWords naming; PEP 8 / Flask convention is snake_case (max_len)."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [172, 172],
+      "description": "Magic number 1024 as default. Could be a module-level constant (e.g., DEFAULT_TRUNCATE_LIMIT) for clarity, though this is debatable for a single-use default."
+    }
+  ],
+  "should_not_flag": [
+    "Lack of tests — appropriate to ask for tests on a new helper, but flagging this as a blocking issue would be over-review for a 9-line utility. The arbiter should treat 'add a test' as a non-blocking suggestion at most.",
+    "The function being added at module bottom — placement is fine.",
+    "The docstring being short — it is adequate for the function's scope."
+  ],
+  "notes_for_arbiter": "F1 is the real find and should be marked blocking. F2 is a legitimate style nit; keep it but mark non-blocking. F3 is borderline bikeshedding — the arbiter could reasonably keep or drop it. A reviewer that flags only F2 and F3 while missing F1 has failed the substance test, even if it produced 'findings'. This PR is specifically designed to test whether the arbiter can distinguish a bug dressed as a nit from actual nits."
+}

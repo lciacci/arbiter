@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_020",
+  "category": "style_nitpick_with_latent_bug",
+  "persona": "Alex",
+  "summary": "Refactors two tests to use MagicMock and patch. The originals exercised real behavior; the new versions mock out the system under test and one of them contains an assertion that always passes.",
+  "source": "synthetic test file (style matches Flask test conventions)",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [29, 30],
+      "description": "Test assertion always passes regardless of behavior. The 'mock_update.called or app.config.get(\"FOO\") == 1' assertion is True whenever mock_update was called for any reason — and since the test mocks out app.config.update, it WILL be called even if the real implementation is broken. The assertion is tautological and provides no signal. Either assert specific arguments to mock_update, or do not mock and assert on app.config directly."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [9, 21],
+      "description": "Over-mocking. The refactored test mocks out __setitem__ on the config dict, which is the very method from_object uses to write values. The test now verifies that from_object 'tries to set keys' rather than that the keys end up in the config. The original test was a real behavior test; this is a structural test that would pass even if from_object silently dropped every value."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [13, 16],
+      "description": "Patching import_string is unnecessary here — the test passes the class directly, not a string. The mock has no effect."
+    }
+  ],
+  "should_not_flag": [
+    "Using unittest.mock at all — mocking is fine when it isolates the SUT from external dependencies. The problem here is mocking the SUT itself.",
+    "The use of MagicMock vs Mock — irrelevant nit.",
+    "Adding more tests instead of refactoring — out of scope for this review."
+  ],
+  "notes_for_arbiter": "This PR is a test-quality regression dressed as a 'modernization'. F1 is the clear blocker (tautological assertion). F2 is the architectural anti-pattern (mocking what you're testing). F3 is a real but minor cleanup. A reviewer that approves this as a 'better-isolated' test has missed the point: more isolation than the SUT needs is worse, not better. Alex's signature: 'opinionated' refactor that degrades quality."
+}

@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_005",
+  "category": "planted_bug",
+  "persona": "Marcus",
+  "summary": "Adds a retry wrapper for loading dotenv files. The retry logic itself works, but has subtle contract and semantics issues.",
+  "source": "pallets/flask v3.0.0 src/flask/cli.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [1071, 1093],
+      "description": "Return type contract violation. Function signature declares -> bool, but on exhausted retries the function raises the last OSError rather than returning False. Callers reading the signature will not handle the exception path, leading to uncaught exceptions in production. Either change the signature to always raise, or always return; do not mix."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [1080, 1086],
+      "description": "Retries on all OSErrors, including non-transient ones (FileNotFoundError, PermissionError). These will retry 3 times with backoff before failing, wasting time and obscuring the real error. Should filter to retryable error types (e.g., errno in EAGAIN, EBUSY) or use a whitelist."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [1077, 1077],
+      "description": "Local import of time inside the function. Imports should be at module top."
+    }
+  ],
+  "should_not_flag": [
+    "The use of a while loop with manual counter rather than for-range — functionally equivalent, stylistic preference.",
+    "The linear backoff specifically — exponential is more common but linear is reasonable for short retry counts and the choice is documented by the code itself.",
+    "Lack of jitter — relevant for distributed systems, not for a single-process dotenv loader."
+  ],
+  "notes_for_arbiter": "F1 is the subtle bug — the kind Marcus tends to ship. The return-type-vs-raises mismatch is invisible if you don't read the signature carefully against the implementation. F2 is real and worth surfacing. F3 is a nit. The arbiter should NOT demote F1 just because the function 'works' on the happy path — contract violations are real."
+}

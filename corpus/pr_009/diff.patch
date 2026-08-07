@@ -1,0 +1,34 @@
+--- before.py	2026-05-13 20:41:22.731029801 +0000
++++ after.py	2026-05-13 20:41:28.374897281 +0000
+@@ -219,3 +219,31 @@
+     app = current_app._get_current_object()  # type: ignore[attr-defined]
+     template = app.jinja_env.from_string(source)
+     return _stream(app, template, context)
++
++
++def sanitize_user_html(raw: str) -> str:
++    """Sanitize a user-supplied HTML string for safe rendering.
++
++    Strips <script> tags and on* event handler attributes to prevent
++    XSS. The result is safe to embed inside a Jinja template using the
++    ``|safe`` filter.
++    """
++    import re
++
++    # Remove script tags and their contents
++    cleaned = re.sub(
++        r"<script.*?>.*?</script>",
++        "",
++        raw,
++        flags=re.IGNORECASE | re.DOTALL,
++    )
++
++    # Strip on* event handler attributes
++    cleaned = re.sub(
++        r'\s+on\w+\s*=\s*"[^"]*"',
++        "",
++        cleaned,
++        flags=re.IGNORECASE,
++    )
++
++    return cleaned

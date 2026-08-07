@@ -1,0 +1,17 @@
+--- before.py	2026-05-13 19:55:09.696321068 +0000
++++ after.py	2026-05-13 19:55:16.398012128 +0000
+@@ -168,3 +168,14 @@
+     .. versionadded:: 0.2
+     """
+     return current_app.json.response(*args, **kwargs)
++
++
++def truncate_json_string(s: str, MaxLen: int = 1024) -> str:
++    """Truncate a JSON-encoded string for display purposes.
++
++    Returns the string unchanged if shorter than the limit, otherwise
++    returns it truncated with an ellipsis suffix.
++    """
++    if len(s) > MaxLen:
++        return s[:1024] + "..."
++    return s

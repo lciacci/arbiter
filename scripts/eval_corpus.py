@@ -40,7 +40,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-CORPUS = Path.home() / "claude" / "pr-arbiter" / "corpus"
+# Vendored, not referenced — pr-arbiter is frozen, so a snapshot cannot drift
+# from its origin, and the harness cannot go dark if that repo moves. Excludes
+# its `_source/` (unmodified Flask, never read here). See corpus/PROVENANCE.md.
+CORPUS = Path(__file__).resolve().parent.parent / "corpus"
 
 # The reviewed path inside the throwaway repo. Rubric line numbers and `file`
 # fields are written against `after.py`, so the file has to carry that name for

@@ -1,0 +1,47 @@
+{
+  "pr_id": "pr_014",
+  "category": "planted_bug",
+  "persona": "Devon",
+  "summary": "Adds a debug request logger that dumps everything about the incoming request. Marked 'TODO: remove before merging' in the docstring, but committed anyway.",
+  "source": "pallets/flask v3.0.0 src/flask/app.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [1488, 1490],
+      "description": "Logs sensitive request data: Cookies (session tokens, auth tokens), Headers (Authorization header, API keys), and full request body. If logs are aggregated to a SIEM, log file, or shipped externally, these become a credential exposure. Must redact or omit auth-bearing headers/cookies and never log raw bodies of authenticated requests."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [1483, 1483],
+      "description": "Docstring explicitly says 'TODO: remove before merging to main'. The author committed code they themselves flagged as not-for-merge. This must not land."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [1494, 1494],
+      "description": "Mixing print() with logger.debug(). The print() statement bypasses the logging framework entirely and will write to stdout regardless of log level configuration. Use the logger consistently."
+    },
+    {
+      "id": "F4",
+      "category": "correctness",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [1487, 1493],
+      "description": "Calls request.get_data() which consumes the request body stream. Subsequent handlers that try to read the body will get empty data. Use request.get_data(cache=True) or read carefully."
+    }
+  ],
+  "should_not_flag": [
+    "Using logger.debug rather than logger.info — debug level is appropriate for debug logging.",
+    "Logging the URL — URL is not sensitive in general.",
+    "The function being callable from elsewhere — yes, that's a feature, not a bug."
+  ],
+  "notes_for_arbiter": "This is Devon at his most Devon. The TODO is the smoking gun — F2 alone is enough to block the PR. F1 is the deeper issue and would still apply even without the TODO. The arbiter should NOT consolidate F1 and F2 into one finding; they are independently blocking for different reasons (one for security policy, one for process discipline)."
+}

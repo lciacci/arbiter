@@ -1,0 +1,39 @@
+{
+  "pr_id": "pr_013",
+  "category": "planted_bug",
+  "persona": "Devon",
+  "summary": "Adds a pagination helper. Slice arithmetic has an off-by-one bug that causes one extra item to leak into each page.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [636, 636],
+      "description": "Off-by-one in slice end. 'end = start + per_page + 1' returns per_page+1 items instead of per_page. Should be 'end = start + per_page'. Python slices are exclusive on the upper bound, so items[start:start+per_page] returns exactly per_page items."
+    },
+    {
+      "id": "F2",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [628, 628],
+      "description": "No validation of page or per_page. page=0 produces start=-per_page (negative slice, wraps to end of list); negative page produces wrong-direction slices; per_page=0 returns empty pages; very large per_page allows expensive requests. Should validate page >= 1 and 1 <= per_page <= some max."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [625, 625],
+      "description": "Return type 'list' is unparameterized. Should be 'list[T]' or use a TypeVar to preserve the input element type."
+    }
+  ],
+  "should_not_flag": [
+    "1-indexing for pages — that's conventional for user-facing pagination and the docstring documents it.",
+    "Not returning a Pagination object with metadata (total, has_next, etc.) — fine for a simple helper, can be added by callers.",
+    "Slicing past the end of the list — Python handles this gracefully, no bug."
+  ],
+  "notes_for_arbiter": "F1 is the most obvious bug in the corpus — a senior reviewer should catch it instantly. If the reviewer misses F1, the system has a serious recall problem. F2 is the kind of validation Devon habitually skips. F3 is a nit. Watch for false positives around 'magic number 20' — defaults are appropriate here, not magic."
+}

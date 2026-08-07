@@ -1,0 +1,32 @@
+--- before.py	2026-05-13 20:39:27.399032439 +0000
++++ after.py	2026-05-13 20:39:27.405413473 +0000
+@@ -1066,3 +1066,29 @@
+ 
+ if __name__ == "__main__":
+     main()
++
++
++def load_dotenv_with_retry(path: str, max_attempts: int = 3) -> bool:
++    """Load a dotenv file, retrying on transient I/O errors.
++
++    Retries with a short backoff. Returns True on success, False if all
++    attempts fail.
++    """
++    import time
++
++    attempt = 0
++    last_err: Exception | None = None
++    while attempt < max_attempts:
++        try:
++            with open(path, "rb") as f:
++                f.read()
++            return True
++        except OSError as e:
++            last_err = e
++            attempt += 1
++            time.sleep(0.1 * attempt)
++
++    # Surface the underlying error for debugging
++    if last_err is not None:
++        raise last_err
++    return False

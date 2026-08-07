@@ -1,0 +1,59 @@
+{
+  "pr_id": "pr_019",
+  "category": "planted_bug",
+  "persona": "Alex",
+  "summary": "Adds a serve_asset helper that does path traversal protection manually. The function already exists as send_from_directory (in the same file) which uses werkzeug.security.safe_join. Reinventing the wheel introduces subtle bugs that the existing abstraction handles correctly.",
+  "source": "pallets/flask v3.0.0 src/flask/helpers.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "correctness",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        625,
+        638
+      ],
+      "description": "Reinvents send_from_directory, which exists in this same module. The existing function uses werkzeug.security.safe_join, which handles symlinks, encoded path separators, absolute paths, and edge cases like Windows drive prefixes that this hand-rolled version does not. Delete this and use send_from_directory."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "high",
+      "file": "after.py",
+      "line_range": [
+        631,
+        633
+      ],
+      "description": "The startswith check is insufficient as a path-escape guard. '/srv/assets-evil'.startswith('/srv/assets') returns True, so a path like '/srv/assets-evil/...' would pass the check while pointing outside asset_root. Must compare resolved paths with a separator boundary (use os.path.commonpath or compare with asset_root + os.sep), or better, use safe_join."
+    },
+    {
+      "id": "F3",
+      "category": "correctness",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        627,
+        627
+      ],
+      "description": "os.path.join handles absolute asset_name by discarding asset_root entirely. If asset_name is '/etc/passwd', os.path.join('/srv/assets', '/etc/passwd') returns '/etc/passwd', and the startswith check then fails (correctly), but the existence of this code path means the function relies on the startswith check to catch what os.path.join lets through. Fragile."
+    },
+    {
+      "id": "F4",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        632,
+        632
+      ],
+      "description": "Local import of NotFound inside the function. Imports should be at module top."
+    }
+  ],
+  "should_not_flag": [
+    "Adding security-relevant code without tests \u2014 fair to mention, but secondary to the 'don't write this at all' finding.",
+    "Use of os.path rather than pathlib \u2014 preference, not a bug.",
+    "Return type annotation Response \u2014 correct for the use case."
+  ],
+  "notes_for_arbiter": "F1 is the headline finding because it makes F2 and F3 moot \u2014 the right fix is to delete this function, not to improve its path handling. The arbiter should NOT split F2 and F3 across many separate comments suggesting fixes to the hand-rolled logic; that approach legitimizes the reinvention. F4 is a real low-severity nit. This is the Alex signature: 'opinionated' work that reinvents existing tools and ships subtle bugs in the process."
+}

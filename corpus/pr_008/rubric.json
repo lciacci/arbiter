@@ -1,0 +1,48 @@
+{
+  "pr_id": "pr_008",
+  "category": "planted_bug",
+  "persona": "Priya",
+  "summary": "Adds a user-lookup helper. The author has added validation on the table name parameter but missed that user_id is interpolated directly into the SQL query string.",
+  "source": "pallets/flask v3.0.0 src/flask/cli.py",
+  "expected_findings": [
+    {
+      "id": "F1",
+      "category": "security",
+      "severity": "critical",
+      "file": "after.py",
+      "line_range": [
+        1083,
+        1083
+      ],
+      "description": "SQL injection vulnerability. user_id is interpolated into the query string via f-string. An attacker passing user_id=\"x' OR '1'='1\" bypasses the user filter entirely. Use parameterized queries: cursor.execute('SELECT * FROM ... WHERE user_id = ?', (user_id,)). The presence of table_name validation does not protect user_id."
+    },
+    {
+      "id": "F2",
+      "category": "security",
+      "severity": "medium",
+      "file": "after.py",
+      "line_range": [
+        1077,
+        1078
+      ],
+      "description": "Table name allowlist regex is too permissive. Allowing dots and hyphens in identifiers permits schema crossing ('admin.users', 'config-secrets') if the database supports it. For a true allowlist, hardcode the list of permitted table names rather than pattern-match."
+    },
+    {
+      "id": "F3",
+      "category": "style",
+      "severity": "low",
+      "file": "after.py",
+      "line_range": [
+        1072,
+        1072
+      ],
+      "description": "import re placed mid-file rather than at module top. Imports should be consolidated at the top of the module."
+    }
+  ],
+  "should_not_flag": [
+    "The use of f-string formatting in general \u2014 f-strings are not the problem, SQL string concatenation is. A reviewer flagging 'don't use f-strings' is targeting the wrong abstraction level.",
+    "Missing tests \u2014 fair to mention but not blocking for review of new code at this scope.",
+    "The return type 'dict | None' \u2014 valid Python 3.10+ syntax."
+  ],
+  "notes_for_arbiter": "F1 is the headline bug. The PR is dangerous specifically BECAUSE it has validation on one parameter \u2014 a reviewer doing a quick pass might see _TABLE_NAME_PATTERN.match() and assume the SQL is safe. This is the Priya signature: 'almost-secure' code that is more dangerous than obviously-insecure code. F2 is real and worth flagging. F3 is a nit. The arbiter must not accept 'but they did validate the table name' as a reason to downgrade F1."
+}

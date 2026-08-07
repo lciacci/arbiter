@@ -1,0 +1,29 @@
+--- before.py	2026-05-13 20:40:57.595030376 +0000
++++ after.py	2026-05-13 20:41:03.434649132 +0000
+@@ -1066,3 +1066,26 @@
+ 
+ if __name__ == "__main__":
+     main()
++
++
++import re
++
++# Allow alphanumeric, underscore, hyphen, and dot in user-supplied table names
++_TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_\-.]+$")
++
++
++def lookup_user_by_id(db_conn, table_name: str, user_id: str) -> dict | None:
++    """Fetch a user record from the named table.
++
++    Validates ``table_name`` against an allowlist pattern before use to
++    prevent SQL injection. Returns the user row as a dict, or None if
++    not found.
++    """
++    if not _TABLE_NAME_PATTERN.match(table_name):
++        raise ValueError(f"Invalid table name: {table_name}")
++
++    cursor = db_conn.cursor()
++    query = f"SELECT * FROM {table_name} WHERE user_id = '{user_id}'"
++    cursor.execute(query)
++    row = cursor.fetchone()
++    return dict(row) if row else None

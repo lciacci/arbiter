@@ -1,0 +1,21 @@
+--- before.py	2026-05-13 21:00:32.575135734 +0000
++++ after.py	2026-05-13 21:00:38.586549797 +0000
+@@ -1476,3 +1476,18 @@
+         wrapped to apply middleware.
+         """
+         return self.wsgi_app(environ, start_response)
++
++
++def debug_log_request(request, logger) -> None:
++    """Log full request details for debugging.
++
++    TODO: remove before merging to main
++    """
++    logger.debug("=== INCOMING REQUEST ===")
++    logger.debug("URL: %s", request.url)
++    logger.debug("Headers: %s", dict(request.headers))
++    logger.debug("Cookies: %s", dict(request.cookies))
++    logger.debug("Body: %s", request.get_data(as_text=True))
++    logger.debug("Form: %s", dict(request.form))
++    logger.debug("Args: %s", dict(request.args))
++    print(f"DEBUG: request from {request.remote_addr}")

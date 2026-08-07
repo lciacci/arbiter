@@ -1,0 +1,15 @@
+{
+  "pr_id": "pr_002",
+  "category": "negative_control",
+  "persona": "Marcus",
+  "summary": "Renames the local variable 'd' to 'config_module' inside from_pyfile for readability. Purely cosmetic; semantically identical.",
+  "source": "pallets/flask v3.0.0 src/flask/config.py",
+  "expected_findings": [],
+  "should_not_flag": [
+    "The rename itself — it is a readability improvement and changes no behavior.",
+    "The use of exec() — this is unchanged existing code, and exec on a config file the developer controls is the documented Flask pattern.",
+    "Lack of tests for a rename — pure renames do not require new tests.",
+    "The variable name 'config_module' being slightly verbose — it is more descriptive than 'd' and a reviewer pushing back on this is bikeshedding."
+  ],
+  "notes_for_arbiter": "This PR should produce an empty or near-empty review. If the reviewer flags anything, the arbiter should reject all findings unless one is genuinely substantive (which it should not be). A reviewer that finds 'issues' here is a noisy reviewer and the eval should penalize it. Optional acceptable output: a single positive comment approving the rename. Anything more is over-review."
+}

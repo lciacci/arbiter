@@ -1,0 +1,16 @@
+--- before.py	2026-05-13 20:42:45.782967000 +0000
++++ after.py	2026-05-13 20:42:50.052822000 +0000
+@@ -171,3 +171,13 @@
+ 
+         # return Werkzeug's default when not in an app context
+         return super().max_cookie_size
++
++
++def get_user_agent_browser(request) -> str:
++    """Extract the browser name from the request's User-Agent header.
++
++    Returns the lowercased browser family string, e.g. 'chrome', 'firefox'.
++    """
++    ua = request.user_agent.string
++    # Browser name is usually the first slash-delimited token
++    return ua.split("/")[0].lower()
