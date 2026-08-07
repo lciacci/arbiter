@@ -57,6 +57,26 @@ introduced. Flask's copyright notice, retained per that licence:
     ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
     POSSIBILITY OF SUCH DAMAGE.
 
+## This corpus trips secret scanners, by construction
+
+`corpus/pr_001/after.py:569` and its `diff.patch` contain
+`AUDIT_TOKEN = "sk_live_8f3a…"`. **It is a planted fake** — expected finding
+**F2**, `critical/security`, "Hardcoded secret/API token in source code". It is
+the fixture that tests whether a reviewer catches committed credentials, so the
+corpus cannot do its job without a credential-shaped string in it.
+
+GitHub push protection blocks it on sight and cannot tell a fixture from a leak.
+The first push of this directory was rejected for exactly that. The string is
+`sk_live_` + 32 lowercase hex characters — real Stripe live keys are mixed-case
+alphanumeric — and the same content is already public in pr-arbiter at the
+commit above.
+
+**If a future push is blocked here, verify before allowlisting**: check the
+line against the PR's `rubric.json`. If it is a listed expected finding, it is a
+fixture. If it is not, treat it as a real leak. Do not allowlist by reflex —
+a corpus that is *expected* to contain secret-shaped strings is precisely where
+a real one would hide best.
+
 ## Resolved: this repository is now licensed
 
 Vendoring surfaced that arbiter had **no `LICENSE` and no `license` field** while
