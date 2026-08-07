@@ -131,8 +131,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--limit", type=int, help="score only the first N PRs")
     p.add_argument("--only", nargs="+", metavar="PR_ID", help="score these PR ids")
     p.add_argument("--corpus", default=str(CORPUS), help=f"corpus dir (default: {CORPUS})")
+    # Must be given as --arbiter-arg=--no-triage. argparse refuses a value that
+    # starts with a dash unless the `=` form is used, and the error it prints
+    # ("expected one argument") does not say so.
     p.add_argument("--arbiter-arg", action="append", default=[], metavar="ARG",
-                   help="pass through to arbiter, repeatable (e.g. --arbiter-arg --no-verify)")
+                   help="pass through to arbiter, repeatable. Use the = form: "
+                        "--arbiter-arg=--no-triage")
     args = p.parse_args(argv)
 
     corpus = Path(args.corpus)
