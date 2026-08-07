@@ -175,20 +175,86 @@ project's own thesis turned back on it. Fixed in `134cccc`. The durable lesson i
 in `STATE.md` under *Fail-open* instance 6: **the fix for a class of defect is
 the most likely place to find the next instance of it.**
 
-**START HERE — nothing is urgent, so pick by what you want to know.** In rough
-order of value:
+**Then the day kept going, and the two results after Round 3 matter more than
+Round 3 did.** Both are in `STATE.md`, in the two sections following it.
 
-1. **Use it on real branches you did not write.** Still the binding constraint,
-   and Round 3 sharpens why: every measurement so far is on arbiter's own code or
-   two sibling repos. n=1 diff in your own repo flatters the tool. Foreign,
-   unfamiliar code is the only thing that would move the recall number honestly.
-2. **The `--no-verify` and `--path`-scoped cost numbers are still missing** — the
-   two remaining unknowns in the cost table, and the gate on ever automating it.
-   Both are one cheap run each.
-3. **Re-run Round 3's shape on a second diff.** The decorrelation result is n=1.
-   A second data point costs one `ultra` trigger plus ~$1.50, and it is the
-   difference between an anecdote and a finding. The recipe is above the fold in
-   `STATE.md`; the `h2h`-branch trick generalises.
+1. **Triage is the bottleneck, not finding.** Union recall over four runs is
+   5 of 7, but the **blocking tier never moves off 2** — everything the reruns
+   recover lands advisory or dropped. arbiter *locates* ~2.5× what any single run
+   reports and then discards it.
+2. **The obvious fix for that is REFUTED, and it cost $4.24 to find out.**
+   Removing `Vote UNSURE if the issue is real but small` from `ARBITER_VOICE`
+   looked like removing a severity leak. It was removing a **false-positive
+   brake**: a confidently-wrong finding (`has_extension` "inverted semantics",
+   wrong in five separate runs) went from never-past-advisory to **blocking in
+   2 of 3 runs**. Reverted. A voice with no tools cannot tell "real but small"
+   from "asserted with conviction and false"; UNSURE was where the second kind
+   landed.
+
+**And the experiment that approved it was structurally incapable of catching
+that** — the Round 3 diff has 7 labelled true positives and zero labelled false
+positives. **A corpus that can only measure recall will approve any change that
+trades precision for it.** That is what `scripts/eval_corpus.py` exists to fix.
+
+**The baseline exists — `STATE.md` → "Corpus baseline, 2026-08-07".**
+20 PRs, 55 expected findings, $4.85: **blocking 19/55 = 0.345 (22 FP),
+blocking+advisory 28/55 = 0.509 (30 FP)**. One false positive across the three
+negative controls. Every engine change is measured against that.
+
+```bash
+python3 scripts/eval_corpus.py            # 20 PRs, ~$5, ~35 min
+python3 scripts/eval_corpus.py --limit 5  # iterate
+```
+
+The corpus is vendored into `corpus/` (see `corpus/PROVENANCE.md` — it also
+explains the planted credential in `pr_001` that blocks GitHub pushes, and how
+to tell it from a real leak). Blocking is scored separately from
+blocking+advisory because blocking is the product.
+
+**START HERE — one cheap run discriminates between the two hypotheses this
+project spent a day circling.**
+
+```bash
+python3 scripts/eval_corpus.py --arbiter-arg --no-verify   # NOT this one
+python3 scripts/eval_corpus.py --arbiter-arg --no-triage   # THIS one
+```
+
+arbiter's blocking+advisory score is **0.509 recall / 30 FP**. Guard (b) in
+`INTEGRATION.md` records conclave's measurement on this same corpus with this
+same matcher: **best single reviewer 0.509 / 30 FP**, role-diverse union
+0.618 / 35. Both quantities match the single-reviewer arm *exactly* — and
+arbiter is supposed to be the role-diverse design.
+
+`--no-triage` puts every finding in advisory and skips the voices. Then:
+
+- **lands near 0.618** → the union is real and **triage is destroying it**,
+  which also explains why reruns never move the blocking tier. Fix triage.
+- **lands at 0.509** → the second pass is not adding what the design assumes,
+  and the problem is upstream of triage entirely. Fix the second pass.
+
+Those have opposite fixes, and today produced evidence for the first from two
+independent directions without ever testing it directly. **Do not skip this and
+start tuning triage.** Cheaper than the baseline, since it skips the triage calls.
+
+**Then, in rough order:****Then, in rough order:**
+
+1. **After `--no-triage` says which end is broken: the untried triage lever is
+   giving the voices tools.** `triage.py` calls
+   `call_tool`; the finders call `call_tool_verified`. The voices are asked "can
+   you reproduce this from the code" while unable to read anything outside the
+   one file in the prompt — confirming the `has_extension` finding is wrong
+   requires reading its caller in `vcs.py`. This is the expensive lever
+   (verification tripled finder cost, and triage is the cheap step), so
+   **score precision, not just recall — the baseline is the reference.**
+2. **Use it on real branches you did not write.** Still the binding constraint.
+   Every verified finding is a free labelled data point for the organic corpus —
+   see `STATE.md` → "The organic corpus, and why it has to grow". Planted defects
+   are written by someone who knows what a reviewer looks for; quote the planted
+   corpus for engine changes and the organic set for claims about real branches,
+   and never blend them.
+3. **The `--no-verify` and `--path`-scoped cost numbers are still missing.** Two
+   cheap runs, and they are the gate on ever automating this.
+4. **Re-run Round 3's shape on a second diff.** The decorrelation result is n=1.
 
 **The Round 3 recipe, since it took real time to work out:** `ultra` needs a
 branch or a GitHub PR and cannot be pointed at a ref range, and it is

@@ -196,6 +196,51 @@ caller in another file. Giving triage the inspection tools is the untried lever,
 and it is the expensive one: verification tripled finder cost, and triage is
 currently the cheap step. **Do not try it without scoring precision.**
 
+### Corpus baseline, 2026-08-07 — the reference number
+
+First full run of `scripts/eval_corpus.py`. **20 PRs, 55 expected findings,
+$4.85, ~35 min.** Every future engine change is compared against this.
+
+| tier | recall | false positives |
+|---|---|---|
+| **blocking only** (what a gate sees) | **19/55 = 0.345** | 22 |
+| blocking + advisory (what a reader sees) | **28/55 = 0.509** | 30 |
+
+Per-PR detail is reproducible with the command; it is not copied here, because a
+hand-maintained table of numbers a command answers is exactly the *doc rot* this
+file keeps recording.
+
+**The three negative controls are the precision headline: 1 false positive
+across all three** (`pr_007`, blocking). Two clean. That is better than the
+22-FP total suggests — most false positives land on PRs that do contain real
+bugs, where a wrong finding is at least adjacent to something.
+
+**And now the thing worth checking before anything is built on it.**
+`INTEGRATION.md` guard (b) records conclave's measurement on this same corpus
+with this same matcher:
+
+- best single (claude reviewer): **0.509 recall / 30 FP**
+- ROLE-diverse union: 0.618 / 35 FP
+- MODEL-diverse union: 0.509 / 50 FP
+
+arbiter's blocking+advisory tier scored **0.509 / 30** — both quantities
+matching the single-reviewer arm exactly. arbiter *is* the role-diverse design
+(reviewer + independent second pass), so it should be landing nearer 0.618/35.
+
+**If that is not a coincidence, the second pass's entire contribution is being
+erased downstream** — which is the same conclusion the rerun-variance work
+reached from a completely different direction on the same day, and the two were
+measured independently.
+
+**Do not treat this as established.** Two integers matching is suggestive, not
+proof; the arms differ in codebase, prompts, and possibly model. **The cheap
+test is `--no-triage`, which puts every finding in advisory and skips the voices
+entirely.** If pre-triage recall lands near 0.618, the union is real and triage
+is destroying it. If it lands at 0.509, the second pass is not adding what the
+design assumes and the problem is upstream of triage. One run, cheaper than this
+one because it skips the triage calls, and it discriminates between the two
+hypotheses this project has been circling all day.
+
 ### The organic corpus, and why it has to grow
 
 `scripts/eval_corpus.py` scores against **planted** bugs. That is the right
