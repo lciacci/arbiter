@@ -252,17 +252,33 @@ def main(argv: list[str] | None = None) -> int:
 
     # Before the empty-state return, not after: "no reviewable changes" over a
     # diff that changed twenty files is the false green this whole path exists
-    # to kill, and that branch never reaches render().
+    # to kill.
+    #
+    # The reason is stated generically on purpose. An earlier version hardcoded
+    # "no code extension or shebang" while `skipped` was already collecting
+    # files for three other reasons, so an emptied `.py` file was reported with
+    # a cause that sent the reader to `--ext`. A skip line that names the wrong
+    # reason is worse than one that names none: it spends the reader's time.
     if skipped:
         shown = ", ".join(skipped[:5]) + (f", +{len(skipped) - 5} more" if len(skipped) > 5 else "")
-        print(f"Not reviewed ({len(skipped)} changed file(s), no code extension or "
-              f"shebang): {shown}", file=sys.stderr)
+        print(f"Not reviewed ({len(skipped)} changed file(s) — outside --path, not code "
+              f"by extension or shebang, not text, or empty at head): {shown}",
+              file=sys.stderr)
 
-    if not units:
+    if not units and not skipped:
         print(f"No reviewable changes in {head_label} vs {base_label}.", file=sys.stderr)
         return 0
 
-    print(f"Reviewing {len(units)} file(s) in {repo.name} ({head_label} vs {base_label})…", file=sys.stderr)
+    # units may be empty here while skipped is not. That case still has to
+    # produce an artefact: a CI step reading --out or --json got an empty
+    # stdout, a stale file from the previous run, and exit 0 — the false green
+    # this whole path exists to kill, surviving in the one channel a gate reads.
+    # render() already handles reviewed == 0 with "This is not a clean result."
+    if not units:
+        print(f"No reviewable changes in {head_label} vs {base_label}.", file=sys.stderr)
+
+    if units:
+        print(f"Reviewing {len(units)} file(s) in {repo.name} ({head_label} vs {base_label})…", file=sys.stderr)
 
     def guarded(u: dict) -> dict:
         """Run one unit, converting any failure into a recorded error.

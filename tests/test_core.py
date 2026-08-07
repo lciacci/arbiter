@@ -877,7 +877,11 @@ def test_path_overrides_the_extension_filter(tmp_path):
     repo, _ = _scope_repo(tmp_path)
     units, skipped = change_units(repo, "HEAD~1", "HEAD", paths=["notes.md"])
     assert [u["path"] for u in units] == ["notes.md"]
-    assert skipped == []
+    # The files --path excluded are REPORTED, not silently gone. `--path` is the
+    # largest ceiling this tool has; scoping a branch to one file and printing
+    # "1 file(s) reviewed · 0 blocking" is the same false green as the extension
+    # filter, reached through a different door.
+    assert skipped == ["a.py", "bin/tool"]
 
 
 def test_render_states_the_skip_in_the_report_body():
@@ -886,3 +890,78 @@ def test_render_states_the_skip_in_the_report_body():
     assert "1 changed file(s) not reviewed" in out
     assert "`bin/tool`" in out
     assert "not reviewed" not in render([ok()], "main", "HEAD")
+
+
+# ---------- what three independent reviews of the scope fix found ----------
+#
+# arbiter, a 17-agent workflow review and a cloud review all ran over the same
+# commit. Seven distinct defects between them, all in code written that day.
+# These guard the ones that were real bugs rather than judgement calls.
+
+def _binary_repo(tmp_path):
+    """A repo whose second commit adds a committed binary with no extension."""
+    repo, git = _repo(tmp_path)
+    (repo / "bin").mkdir()
+    (repo / "bin" / "tool").write_bytes(b"\x7fELF\x02\x01\x01\x00\xff\xfe")
+    (repo / "assets").mkdir()
+    (repo / "assets" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe")
+    (repo / "cfg").mkdir()
+    (repo / "cfg" / ".env").write_text("SECRET_KEY=hunter2\n")
+    git("add", "-A")
+    git("commit", "-qm", "two")
+    return repo, git
+
+
+def test_a_committed_binary_does_not_kill_the_run(tmp_path):
+    """`_git` runs with text=True, so a non-UTF-8 blob raises UnicodeDecodeError
+    *inside* subprocess.run — before `_git` can build a GitError. Catching only
+    GitError meant one binary took down the whole review: every other file in
+    the diff went unreviewed too. Reported by all three reviews."""
+    repo, _ = _binary_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD")     # must not raise
+    assert "bin/tool" in skipped
+    assert "bin/tool" not in {u["path"] for u in units}
+
+
+def test_path_does_not_make_a_binary_reviewable(tmp_path):
+    """`--path` is authoritative over the *extension set*, not over whether the
+    file is text. `--path assets` used to crash on a PNG."""
+    repo, _ = _binary_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD", paths=["assets"])
+    assert units == []
+    assert "assets/logo.png" in skipped
+
+
+def test_path_does_not_ship_a_dotfile_of_secrets_to_the_model(tmp_path):
+    """The one gate `--path` does not override. `--path cfg` sweeping up
+    `cfg/.env` and sending its plaintext to the API is not what "authoritative"
+    was meant to buy — and a directory prefix is not evidence that everything
+    under it is source. Extensionless means shebang or nothing, `--path` or not."""
+    repo, _ = _binary_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD", paths=["cfg"])
+    assert units == []
+    assert "cfg/.env" in skipped
+
+
+def test_a_run_that_reviews_nothing_still_writes_its_artefact(tmp_path):
+    """units empty + skipped non-empty used to return before render(): empty
+    stdout, no --out file, exit 0. A CI step reading the artefact got the
+    previous run's markdown, or nothing, and a clean exit — the false green
+    surviving in the one channel a gate actually reads."""
+    repo, git = _repo(tmp_path)
+    (repo / "notes.md").write_text("# notes\n")
+    git("add", "-A")
+    git("commit", "-qm", "two")
+
+    out = tmp_path / "review.md"
+    out.write_text("STALE — two blocking findings from the previous run\n")
+
+    from arbiter.cli import main
+    rc = main(["--repo", str(repo), "--base", "HEAD~1", "--out", str(out)])
+
+    assert rc == 0                                  # nothing to gate on
+    body = out.read_text()
+    assert "STALE" not in body                      # the artefact was rewritten
+    assert "0 file(s) reviewed" in body
+    assert "not a clean result" in body             # and does not read as clean
+    assert "`notes.md`" in body                     # naming what it skipped

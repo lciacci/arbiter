@@ -144,24 +144,23 @@ def matches_any(path: str, patterns: list[str]) -> bool:
     )
 
 
-def _is_script(repo: Path, ref: str, path: str) -> bool:
-    """True if an extensionless file's head-state opens with a shebang.
+def _head_text(repo: Path, ref: str, path: str) -> str | None:
+    """Head-state content, or None if it cannot be read as text.
 
-    The extension filter alone dropped every `bin/tessera-verify`-shaped file
-    and said nothing, so a run printed "1 file(s) reviewed · 0 blocking" over
-    code it never opened. Gated on `has_extension` so this costs one `git show`
-    per extensionless changed file and nothing at all for the rest.
+    `_git` runs with `text=True`, so a file whose bytes are not valid UTF-8
+    raises `UnicodeDecodeError` *inside* `subprocess.run` — before `_git` gets
+    to build a `GitError`. An earlier version caught only `GitError`, so a
+    committed binary with no extension took down the entire run with a
+    traceback: every other file in the same diff went unreviewed too. Found by
+    three independent reviews of this function, and reproduced.
 
-    A read failure returns False, which drops the file into the *reported*
-    skip list rather than into silence. That is the fail-closed direction: the
-    file goes unreviewed either way, but the report says so.
+    None is the fail-closed direction — the caller drops the file into the
+    *reported* skip list rather than into silence, and rather than into a crash.
     """
-    if has_extension(path):
-        return False
     try:
-        return _content_at(repo, ref, path).startswith("#!")
-    except GitError:
-        return False
+        return _content_at(repo, ref, path)
+    except (GitError, UnicodeDecodeError):
+        return None
 
 
 def change_units(
@@ -171,22 +170,32 @@ def change_units(
     exts: frozenset[str] | set[str] = DEFAULT_EXTS,
     paths: list[str] | None = None,
 ) -> tuple[list[dict], list[str]]:
-    """(reviewable units, paths dropped for not being code) for a ref range.
+    """(reviewable units, every changed path left unreviewed) for a ref range.
 
     The second element is the point: a file this tool declines to review is a
     ceiling on every clean result it prints, and an unannounced ceiling makes a
-    green unfalsifiable. Deletions are not listed — there is no after-state to
-    review and their absence surprises nobody.
+    green unfalsifiable. **Every** reason for declining lands in that list —
+    outside `--path`, wrong extension, not text, empty at head. Deletions are
+    the one exception: there is no after-state to review and their absence
+    surprises nobody.
 
-    Scope is decided in three steps, in this order:
+    Scope is decided in this order:
 
-    1. `--path` filters first. It is then **authoritative**: an explicit path
-       list is a deliberate statement of what to review, so it overrides
-       extension sniffing entirely. It used to run *after* the extension
-       filter, which meant it could not rescue anything the extension filter
-       had already dropped.
+    1. `--path` filters first, and is **authoritative over the extension set**:
+       a named path is reviewed whether or not its suffix is in `exts`. It used
+       to run *after* the extension filter and so could not rescue anything.
+       It is deliberately **not** authoritative over whether the file is code
+       at all — see step 3. `--path config` sweeping up `config/.env` and
+       shipping it to the model is not what "authoritative" was meant to buy,
+       and `--path assets` used to crash outright on a PNG.
     2. A known code extension passes.
-    3. Failing both, an extensionless file passes if it starts with a shebang.
+    3. An extensionless file passes only if its head-state starts with `#!` —
+       under `--path` as much as without it. This is the one gate `--path` does
+       not override, because "the user named this directory" is not evidence
+       that everything under it is source.
+
+    Content is read at most once per file: the shebang test keeps what it read
+    and hands it to the after-state, so a script costs one `git show`, not two.
     """
     rng = _range_args(repo, base, head)
     units: list[dict] = []
@@ -195,10 +204,22 @@ def change_units(
         if status == "D":
             continue
         if not matches_any(path, paths or []):
-            continue
-        if not (paths or is_reviewable(path, exts) or _is_script(repo, head, path)):
+            # Reported, not silent. `--path` is the largest ceiling this tool
+            # has — scoping a 30-file branch to one file and printing
+            # "1 file(s) reviewed · 0 blocking" is the same false green as the
+            # extension filter, reached through a different door.
             skipped.append(path)
             continue
+
+        after: str | None = None
+        if not (is_reviewable(path, exts) or (paths and has_extension(path))):
+            if has_extension(path):
+                skipped.append(path)
+                continue
+            after = _head_text(repo, head, path)
+            if after is None or not after.startswith("#!"):
+                skipped.append(path)
+                continue
 
         # A (added) and C (copied) both produce a file that did not exist at
         # base, so there is no before-state to read. Only R carries a real
@@ -213,8 +234,9 @@ def change_units(
         # review as 500 lines of brand-new code.
         pathspec = [old_path, path] if status == "R" and old_path != path else [path]
 
-        after = _content_at(repo, head, path)
-        if not after.strip():
+        if after is None:
+            after = _head_text(repo, head, path)
+        if after is None or not after.strip():
             skipped.append(path)
             continue
         units.append(
