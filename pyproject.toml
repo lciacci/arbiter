@@ -3,6 +3,8 @@ name = "arbiter"
 version = "0.1.0"
 description = "Adversarial second-opinion code review: reviewer, independent second pass, mutual triage."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "lciacci", email = "lorenzo@lorenzociacci.com" }
 ]

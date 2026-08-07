@@ -57,10 +57,15 @@ introduced. Flask's copyright notice, retained per that licence:
     ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
     POSSIBILITY OF SUCH DAMAGE.
 
-## Open, and the repo owner's call
+## Resolved: this repository is now licensed
 
-**This repository has no `LICENSE` file and no `license` field in
-`pyproject.toml`.** That predates this snapshot, but vendoring third-party-derived
-content into an unlicensed public repo makes it more pressing. pr-arbiter is MIT;
-matching it would be the consistent choice. Not done here — it is a repository-level
-decision, not a side effect of wiring up an eval harness.
+Vendoring surfaced that arbiter had **no `LICENSE` and no `license` field** while
+being public. Fixed in the commit that followed this snapshot: `LICENSE` is MIT,
+byte-identical to pr-arbiter's, and `pyproject.toml` declares
+`license = "MIT"` with `license-files = ["LICENSE"]`.
+
+MIT is compatible with the BSD-3-Clause material above — both are permissive and
+attribution-only — but note the two licences cover different things. arbiter's
+MIT covers arbiter's own code. **It does not relicense the Flask-derived files in
+this directory**, which remain BSD-3-Clause and carry their notice above. A
+redistributor of this repo owes both.

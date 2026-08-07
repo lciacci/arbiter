@@ -248,3 +248,12 @@ drift; treat it as "cents or dollars", not an invoice. Drivers, in order:
   31-agent workflow review on the same diff, arbiter found 2 of its 3 real
   defects and missed 8 others. It is a cheap first pass, and it is honest about
   being one.
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
+
+One exception: `corpus/` is a vendored evaluation corpus whose `before.py` /
+`after.py` files are derivative works of Flask 3.0.0 and remain **BSD-3-Clause**.
+MIT covers arbiter's own code and does not relicense them; a redistributor owes
+both notices. See [`corpus/PROVENANCE.md`](corpus/PROVENANCE.md).
