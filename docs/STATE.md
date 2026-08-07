@@ -179,13 +179,19 @@ is an argument for running both, not for picking one.
    | tessera | 7 Python files | $2.74 | $0.39 |
    | arbiter | 3 large Python files | $1.54 | $0.51 |
    | conclave | 1 shell file, 287 lines | $0.79 | $0.79 |
+   | tessera | 2 Python files, 1841 lines *(post-caching)* | $1.51 | $0.76 |
+
+   The fifth point is the only one measured **after** prompt caching, and it is
+   the most expensive per file on the table — because the files are the largest
+   on it (1009 + 832 lines). 52% of 762k input tokens served from cache and it
+   still cost $0.76/file. Caching does not repeal the size term; it discounts it.
 
    Per-file cost is **not** stable — it ranges 2x with file size, so estimating
    in "files changed" is wrong twice over: only reviewable files cost anything
    (conclave changed 114 files, 113 were logs and result data, one was
    reviewed), and their size drives the rest.
 
-   **All four points predate prompt caching (2026-07-30) and are now upper
+   **The first four points predate prompt caching (2026-07-30) and are upper
    bounds.** Measured end-to-end afterwards on one 230-line Python file at
    `--jobs 1`: 6 calls, 75,552 prompt tokens, 50% served from cache, $0.17 —
    against $0.24 for the same token count at full input rate, about 29% off.
@@ -294,9 +300,31 @@ is an argument for running both, not for picking one.
    flag is a file with an extension *outside* the set — and that is now printed
    rather than assumed.
 
-   **Unmeasured:** the fix has not been run against a real branch. The blocking
-   finding that `--ext ""` surfaced from tessera should now appear on a default
-   run, and nothing has confirmed that end to end.
+   **Confirmed on the diff that exposed it, 2026-08-07.** `arbiter --repo
+   ../tessera --base 84c63cc --head 9b73e27` — the range whose subject is
+   `bin/tessera-watch`, 1009 lines, `#!/usr/bin/env python3`, and whose only
+   other code file is the `.py` test beside it. That is the "1 file(s) reviewed
+   · 0 blocking" run: the old default opened the test and nothing else.
+
+   On the fixed build: **2 files reviewed, 2 blocking + 1 advisory, both `.md`
+   files named as skipped** in the stderr line and in the report body. 22 calls,
+   762,244 in (52% cached) / 5,095 out, **$1.51**.
+
+   Two things worth keeping from it beyond the pass/fail:
+
+   - **Exit 0.** Both findings are medium and low, and `eef0cdc` requires high
+     or critical. The severity gate and the scope fix compose the way they
+     should — a wider review did not make the gate noisier.
+   - **arbiter's consequence claim held, for the first time on record.** It
+     reported the unguarded `log.read_text()` at `bin/tessera-watch:761` *and*
+     argued the OSError propagates out of `evaluate()` and kills the whole
+     watcher run. Checked: `evaluate()` (line 923) has no `try` around
+     `pred(root)`. The standing note is that the finder locates better than it
+     concludes; this is one data point against that, not a repeal of it.
+
+   Not claimed: that this is the *same finding* the original `--ext ""` re-run
+   produced. That run was a different range. What is confirmed is the scope —
+   the default now opens the file.
 
 ## The triage bug, and two wrong diagnoses before it
 

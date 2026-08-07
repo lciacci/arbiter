@@ -142,30 +142,39 @@ it because it was "only logging". Found by ruff (B905), fixed in `db50d16`.
   page in the same pass — **that is the drill.** The page is deployed by sftp, so
   a commit here does not update the site; it needs an upload.
 
-**START HERE — confirm the scope fix on a real branch (2026-08-07, `975b491`).**
-The previous START HERE is done. Reviews used to be silently narrower than they
-claimed: `is_reviewable()` filtered on extension, extensionless shebang scripts
-were dropped, and nothing in the output said so. All three parts landed —
-skipped files are named in both the stderr line and the report body, `--path`
-runs first and is authoritative, and extensionless files are picked up by
-shebang. 264 tests green.
+**The scope bug is closed — fixed and confirmed on 2026-08-07 (`975b491`).**
+Reviews used to be silently narrower than they claimed: `is_reviewable()`
+filtered on extension, extensionless shebang scripts were dropped, and nothing
+in the output said so. All three parts landed — skipped files are named in the
+stderr line *and* the report body, `--path` runs first and is authoritative, and
+extensionless files are picked up by shebang. Confirmed against the diff that
+exposed it (`--base 84c63cc --head 9b73e27` in tessera): `bin/tessera-watch`
+reviewed by default, 2 blocking, both `.md` files named as skipped, $1.51.
+Full account in `STATE.md` item 7.
 
-**What is not done is the confirmation, and it costs one run.** Point arbiter at
-the tessera commit from the original account (`--base 84c63cc`, `bin/tessera-watch`)
-and check that the blocking finding which previously needed `--ext ""` now shows
-up on a default run. Everything so far is unit-tested against a synthetic repo;
-nothing has run the fixed path against the diff that exposed the bug. Under $1.
-
-Two decisions inside the fix are recorded in `STATE.md` item 7 so they don't get
-re-litigated: **any `#!` counts** (not an interpreter allowlist — the prompts are
+Two decisions inside the fix are recorded there so they don't get re-litigated:
+**any `#!` counts** (not an interpreter allowlist — the prompts are
 language-agnostic and an allowlist restores the silent drop for perl), and
 **`--ext` does not disable shebang sniffing** (a file with no extension is not a
 member of any extension set; leaving it to `--ext` restores the same drop under a
 different flag). `--path` is the lever for narrowing.
 
-Then re-read the promo page and `docs/INTEGRATION.md` — both are updated in the
-same commit as this, but the page is deployed by sftp, so **a commit here does not
-update the live site.**
+**START HERE — the comparative standing is unmeasured, and it is now the only
+thing blocking two other people's decisions.** Both `/code-review` head-to-heads
+predate the typed-tool rewrite, so no number describes the current build. This is
+not idle curiosity: conclave has a **paid experiment queued** on peer-strength
+decorrelation and is deliberately not spending, partly on the chance a
+head-to-head here answers it for free (`INTEGRATION.md`, guard (b)). Run both on
+one identical diff and write up what each found that the other did not.
+
+**Two loose ends from the confirmation run, both small:**
+
+- The run found 2 real defects in tessera's `bin/tessera-watch` (unguarded
+  `log.read_text()` at :761 that takes down the whole watcher, and a receipt-bar
+  fall-through that prints "thin data" over a count above the bar). They are
+  **not reported to tessera yet** — that is a cross-repo call, not arbiter's.
+- The promo page is deployed by sftp, so **a commit here does not update the live
+  site.** It now says the fix is confirmed; the live copy needs the upload.
 
 **Still open, lower priority:** an observatory entry for Tessera on whether hook
 payload parsing should be a shared tested helper (`FINDINGS.md` F-001 — second

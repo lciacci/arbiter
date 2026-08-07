@@ -123,12 +123,23 @@ entirely TRUE and still be a false green — ask what it did NOT cover*).
 authoritative; anything still dropped is named in the report body, not only on stderr. **A run
 against Tessera or conclave no longer needs `--ext ""`.**
 
-Two caveats before Tessera treats this as settled. **(1) Unconfirmed on a real branch** — the fix is
-unit-tested against a synthetic repo, and nothing has yet re-run the `bin/tessera-watch` diff that
-exposed the bug to check the blocking finding now surfaces by default. **(2) Pattern #12 is not
-retired by it.** The fix makes the skip *stated*, which is a narrower claim than "nothing was
-skipped" — a file with an extension outside the set is still dropped, and the report telling you so
-is exactly what pattern #12 says to go looking for.
+**Confirmed on Tessera's own diff, same day.** `arbiter --repo ../tessera --base 84c63cc --head
+9b73e27` — the range that exposed the bug — reviewed `bin/tessera-watch` (1009 lines,
+`#!/usr/bin/env python3`) on a **default** run: 2 blocking, 1 advisory, and the two `.md` files it
+declined named in the report. $1.51, 52% cached. Exit 0, because both findings are medium/low and
+the severity gate requires high or critical.
+
+**Two things Tessera should take from this, one of them work.**
+
+1. **The run found two live defects in `bin/tessera-watch` and they are not filed anywhere but
+   here.** `log.read_text()` at :761 is unguarded, and `evaluate()` at :923 has no `try` around
+   `pred(root)` — checked by hand, the consequence claim holds, so an OSError in P16 takes down the
+   whole watcher run. Separately, the receipt-bar arm can fall through to the elapsed arm with
+   receipts *above* the bar and print a "thin data" message over a count of ≥10. This is exactly the
+   hub-directed-channel gap noted under S5: arbiter has no addressee field to send these through.
+2. **Pattern #12 is not retired.** The fix makes the skip *stated*, which is a narrower claim than
+   "nothing was skipped" — a file with an extension outside the set is still dropped. The report
+   telling you so is what pattern #12 says to go looking for, not a reason to stop looking.
 
 ---
 
