@@ -65,7 +65,9 @@ could be pointed at the same thing.
 | F | `--path`-excluded files never enter the skip list | ❌ | ✅ | ❌ |
 | G | `has_extension` is a one-caller wrapper | ❌ | ✅ | ❌ |
 
-**Union 7. arbiter 2, ultra 4, the 17-agent workflow 7.**
+**Union 7. arbiter 2, ultra 4, the 17-agent workflow 7** — but see the amendment
+immediately below before quoting arbiter's number anywhere. **It is one draw
+from a wide distribution, and taken alone it is misleading.**
 
 **The load-bearing result, and it is the one conclave's queued experiment is
 about: arbiter and ultra each caught something the other missed.** arbiter has
@@ -93,6 +95,58 @@ Cost is **not comparable across the arms** and should not be quoted as a ratio:
 arbiter metered $1.56 / 46 calls / ~2 min at list price; the workflow arm
 reported 17 agents / 692k subagent tokens / 8 min on a different meter; ultra
 ran on the free tier and exposes no token count at all.
+
+### Amendment, same day: "2 of 7" was one draw, and the real bottleneck is triage
+
+The number above was published, and then a $0.40 diagnostic re-ran one file of
+the same range and **arbiter found defect C** — which the scored run had
+reported as a miss. Same input, different result. So the whole arm was re-run
+three more times ($4.44) and the four runs scored as a union:
+
+| Defect | scored run | run 1 | run 2 | run 3 | union |
+|---|:--:|:--:|:--:|:--:|:--:|
+| A `UnicodeDecodeError` crash | **blocking** | — | — | — | ✅ |
+| B `--path` short-circuit | **blocking** | — | **blocking** | **blocking** | ✅ |
+| C all-skipped → exit 0 | — | — | advisory | dropped | ✅ |
+| D skip reason mischaracterised | — | advisory | advisory | dropped | ✅ |
+| F `--path`-excluded not in skip list | — | — | — | dropped | ✅ |
+| E duplicate `git show` | — | — | — | — | ❌ |
+| G `has_extension` wrapper | — | — | — | — | ❌ |
+| **distinct defects found** | **2** | **1** | **3** | **4** | **5** |
+
+**Two numbers, and the gap between them is the finding.**
+
+- **Union recall across four runs: 5 of 7**, up from 2. Per-run range **1–4** — a
+  4× spread on byte-identical input. One run is a poor estimator of what this
+  tool can find, and Round 3's headline was a single draw reported as a
+  capability.
+- **Blocking-tier recall does not move: still A and B, 2 of 7, in every
+  combination.** Every defect the reruns recover lands advisory or dropped.
+
+**So finding is not the bottleneck — triage is.** arbiter *locates* about 2.5×
+what any one run reports and then discards it. That inverts where the effort
+should go: not a better reviewer prompt, not more finders, but triage
+calibration. It is also the third time this project has been wrong about triage
+by reasoning instead of logging, and the second time the fix was to run the
+instrument again rather than think harder.
+
+**Two supporting observations, both cheap to re-check:**
+
+- **`has_extension` was flagged in all three reruns as inverted-semantics, and
+  all three are wrong.** It returns True when a file *has* an extension and the
+  caller negates it correctly. A confident, reproducible false positive — triage
+  dropped it twice and let it through once, so triage is not filtering it
+  reliably either. G is scored ❌ above because the reports are not the finding.
+- **E is invisible to arbiter across all four runs.** Not one mention of the
+  duplicate read. Run 1 got adjacent — it noticed the shebang check pulls whole
+  binaries into memory — without seeing that the same content is fetched again
+  seventeen lines later. Seeing one function call twice in one function is
+  exactly what per-file review should be best at.
+
+**What this does *not* change.** The peer-strength result stands: even at union
+5 of 7, B is still a defect ultra missed and arbiter caught, and the 17-agent
+arm still found all seven. Nothing here makes arbiter competitive on the
+blocking tier, which is the tier that is the product.
 
 ## The measurement that matters (Round 1 — predates the typed-tool rewrite)
 

@@ -163,7 +163,9 @@ different flag). `--path` is the lever for narrowing.
 first; it is the newest real result in this project.** Three arms over one
 byte-identical diff (arbiter's own `975b491` on a throwaway `h2h` branch):
 **arbiter 2 of 7 distinct defects, `ultra` 4, a 17-agent workflow-backed
-`/code-review` all 7.** arbiter and ultra each caught one the other missed, which
+`/code-review` all 7 — then an amendment the same day found arbiter's 2 was one
+draw from a 1-to-4 spread, union 5 of 7 over four runs, with the blocking tier
+frozen at 2 throughout.** arbiter and ultra each caught one the other missed, which
 is the peer-strength decorrelation conclave's queued experiment was waiting on —
 and the 17-agent arm finding all seven removes Round 2's architecture confound.
 `INTEGRATION.md` guard (b) carries the notification.

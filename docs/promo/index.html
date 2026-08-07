@@ -321,7 +321,7 @@
       <div class="card">
         <span class="badge">Honest</span>
         <h3>It is a first pass</h3>
-        <p>Measured three ways over one identical diff: arbiter found 2 of 7 distinct defects, <code class="inline">ultra</code> found 4, a 17-agent workflow review found all 7. It is not trying to beat the heavy option — it is trying to cost cents, and to catch things the heavy option doesn't.</p>
+        <p>Measured three ways over one identical diff: arbiter found 2 of 7 distinct defects per run (5 of 7 as a union over four runs), <code class="inline">ultra</code> found 4, a 17-agent workflow review found all 7. It is not trying to beat the heavy option — it is trying to cost cents, and to catch things the heavy option doesn't.</p>
       </div>
     </div>
   </div>
@@ -590,6 +590,7 @@ arbiter --base "$(git merge-base HEAD origin/main)" || exit 1</pre></div>
         </table>
       </div>
       <p style="color:var(--text-dim); font-size:0.88rem; margin-top:18px;"><strong style="color:var(--text)">2 of 7 is the honest headline.</strong> arbiter is not competitive on recall and this page is not going to pretend otherwise. The interesting row is the highlighted one: the highest-severity defect in the set — a crash plus a path for a <code class="inline">.env</code> file's contents to reach the API — was caught by arbiter and by the 17-agent arm, and <em>missed by ultra</em>. Meanwhile ultra caught three that arbiter missed. Neither reviewer's findings are a subset of the other's, and a cheaper arm caught what the premium one didn't — so this isn't just "more agents find more".</p>
+      <p style="color:var(--text-dim); font-size:0.88rem; margin-top:12px;"><strong style="color:var(--text)">Amended the same day: 2 of 7 was one draw.</strong> Re-running the identical diff three more times, arbiter found <strong style="color:var(--text)">5 of 7</strong> as a union — per-run range 1 to 4, a 4&times; spread on byte-identical input. <strong style="color:var(--text)">But its blocking tier never moved: 2 of 7 in every combination.</strong> Everything the reruns recover lands advisory or dropped. So finding is not the bottleneck &mdash; triage is: the tool locates roughly 2.5&times; what any single run reports, then discards it. That is a more useful thing to know than the original number, and it is why this section says it out loud rather than quietly restating the better figure.</p>
       <p style="color:var(--text-dim); font-size:0.88rem; margin-top:12px;"><strong style="color:var(--text)">Bounds, because one diff is one diff.</strong> n = 1, in arbiter's own repo, on code written that day — a corpus that flatters the arm most familiar with it. Cost is not comparable across the arms either: arbiter metered $1.56 at list price, the 17-agent arm reports a different meter entirely, and ultra exposes no token count. No ratio is quoted here for that reason.</p>
     </div>
 
