@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     usd = 0.0
 
     print(f"{'PR':9} {'category':28} {'exp':>4} {'blk':>9} {'blk+adv':>9} {'$':>6}")
-    print("-" * 72)
+    print("-" * 72, flush=True)
 
     with tempfile.TemporaryDirectory() as tmp:
         for pr in prs:
@@ -179,11 +179,15 @@ def main(argv: list[str] | None = None) -> int:
                 totals[t]["fp"] += fp
                 cells[t] = f"{m}/{len(expected)}+{fp}fp"
 
+            # flush per PR: a full run is tens of minutes, and Python buffers
+            # stdout when redirected. Without this, a long run and a hung one
+            # look identical from the outside — which is exactly the ambiguity
+            # this tool exists to remove from review results.
             print(f"{pr.name:9} {rubric['category']:28} {len(expected):>4} "
                   f"{cells['blocking']:>9} {cells['advisory']:>9} "
-                  f"{data.get('usage', {}).get('usd', 0):>6.2f}")
+                  f"{data.get('usage', {}).get('usd', 0):>6.2f}", flush=True)
 
-    print("-" * 72)
+    print("-" * 72, flush=True)
     for t in tiers:
         d = totals[t]
         recall = d["matched"] / d["expected"] if d["expected"] else 0.0
