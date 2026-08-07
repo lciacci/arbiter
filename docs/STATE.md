@@ -205,6 +205,32 @@ is an argument for running both, not for picking one.
    *Fail-open* below: not a wrong answer, a confident claim about work that
    never happened. Re-measure with `count_tokens` before adding one.
 
+   **The cheap-model lever is measured, and it is dead (conclave, 2026-08-07).**
+   Written here by conclave rather than proposed, because it is a fact about
+   conclave's substrate that lands in this repo's cost path. Swapping the finder
+   to a cheap self-hosted model is the obvious next cost move after caching, and
+   it does not work: on **this project's own corpus** — pr-arbiter's 20 PRs, 55
+   expected findings, the reviewer prompt verbatim, their matcher — a local
+   Qwen3-Coder-30B scores **0.073 recall and 0/8 criticals** against
+   claude-sonnet's **0.509** on the identical task. Not confabulation: it parsed
+   cleanly every time and correctly returned zero on all three negative-control
+   PRs. It under-detects, ~1 finding per PR where 3–5 exist.
+
+   The load-bearing part is *why*, because it is not "small model bad". The same
+   local model **matches** a hosted FP8 80B on edit-and-apply (3/3 byte-identical
+   over three tasks, zero edit rejects) while losing ~7× on find-the-defect.
+   **Task shape, not model tier, is what breaks.** Review is the shape that
+   breaks it — which is this tool's entire workload.
+
+   Consequence for the D3 seam: `ANTHROPIC_BASE_URL` → conclave's gateway works
+   mechanically and buys nothing at the `local-mid` tier. Caching, `--path`
+   scoping and `--no-verify` remain the real levers. Conclave's model-axis run
+   also found MODEL-diverse union adds **+0.000 recall and +20 false positives**
+   over a single reviewer, so a *fleet* of finders is not a cost or quality play
+   either — though that arm used a weaker second model and so cannot speak to
+   peer-strength diversity. Evidence:
+   `../conclave/docs/LOCAL-CODER-FAILURES.md`, `../conclave/orchestrator/s2_model_axis.py`.
+
    Related trap, avoided on purpose: `usage()` used to sum `input_tokens`, which
    is the **uncached remainder**, not the prompt. Had the meter not been fixed
    first and separately, the cost line would have fallen while the token total

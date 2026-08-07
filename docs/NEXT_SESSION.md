@@ -60,6 +60,10 @@ default and costs roughly 3× a bare run.
    1024-token minimum, and a marker that caches nothing reads as done. Still
    unmeasured: **the same scope with `--no-verify`**, and whether
    `--path`-scoped runs land near $0.10.
+   **Do not spend a session on a cheaper finder model — conclave measured it and
+   it is dead:** a local 30B scores 0.073 recall / 0-of-8 criticals on *this
+   project's own corpus* against claude's 0.509, while matching a hosted 80B on
+   edit-and-apply. Task shape, not model tier. Full account in `STATE.md` item 2.
 
 **Demoted, deliberately: wiring it as a git hook.** It was step 2 and it was the
 wrong target. Reasons are in full in `STATE.md` under "What has never been run",
