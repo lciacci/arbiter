@@ -167,6 +167,43 @@ decorrelation and is deliberately not spending, partly on the chance a
 head-to-head here answers it for free (`INTEGRATION.md`, guard (b)). Run both on
 one identical diff and write up what each found that the other did not.
 
+**The setup is decided; only the trigger is parked.** Two constraints were worked
+out on 2026-08-07 and cost real time, so don't re-derive them:
+
+1. **`/code-review ultra` needs a branch or a GitHub PR.** It cannot be pointed at
+   a ref range. The tessera range that confirmed the scope fix
+   (`84c63cc..9b73e27`) is old history on `main` — neither — so **the $1.51
+   tessera run cannot double as the arbiter arm of the head-to-head.** It did its
+   job as the confirmation; that is all it is.
+2. **Ultra is user-triggered and billed — the assistant cannot launch it.** Both
+   existing head-to-heads were against that 31-agent arm, so a plain
+   `/code-review` run is a *different* arm and would not extend the series.
+   Estimated ultra cost on a diff this size: **~$3–8** (31 agents / 1.3M tokens
+   from round 1, priced at current rates; the token split is inferred, and if it
+   bills to a Claude subscription it consumes usage limits rather than dollars).
+
+**The agreed target is arbiter's own scope fix, on a branch in this repo:**
+
+```bash
+git checkout -b h2h 53d3ac2
+git cherry-pick 975b491 78c2318
+```
+
+Merge-base is `53d3ac2`, so the diff is exactly the scope fix — `vcs.py`,
+`lang.py`, `cli.py`, `test_core.py`. Then: `/code-review ultra` with no argument
+from this repo on that branch, plain `/code-review` for a third arm, and
+`arbiter --base 53d3ac2 --head h2h` (~$1.50–2.50; `--path src/` scopes it to ~$1).
+Three arms, one diff, code neither tool has seen.
+
+**Parked on 2026-08-07 because tessera had uncommitted work in flight** —
+`bin/tessera-watch`, `scripts/mnemos/checkpoint.py`, `docs/observatory.md` all
+modified with an untracked test, a live session mid-edit on the very file the
+confirmation run reported defects in. Nothing here is blocked by that; the wait
+was to avoid stepping on it. **Loose end:** the `bin/tessera-watch` defect report
+was written into `../tessera/_project_specs/todos/active.md` (new item 7, plus a
+clause in the handoff heading) and **left uncommitted on purpose** — committing it
+would have swept up that session's changes. Check it survived.
+
 **Two loose ends from the confirmation run, both small:**
 
 - The run found 2 real defects in tessera's `bin/tessera-watch` (unguarded
