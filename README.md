@@ -75,9 +75,18 @@ arbiter --json
 
 Reviews `.py .sh .bash .zsh .ts .tsx .js .jsx .sql` by default, plus any
 extensionless file that starts with a shebang. `--ext` sets the extension list;
-`--path` overrides scope outright and is honoured before anything else. Whatever
-is left unreviewed is named in the report — a file this tool declines to open is
-a ceiling on the clean result it prints, so it never goes unstated.
+`--path` scopes the run and overrides the **extension set**, so a named path is
+reviewed whether or not its suffix is in it.
+
+`--path` deliberately does *not* override whether the file is code at all —
+extensionless still means shebang-or-nothing. Naming a directory is not evidence
+that everything under it is source, and the earlier version that took it that way
+crashed on a PNG and would have read a `.env` and sent it to the API.
+
+**Every changed file left unreviewed is named in the report**, whatever the
+reason — outside `--path`, wrong extension, not text, empty at head. A file this
+tool declines to open is a ceiling on the clean result it prints, so it never
+goes unstated.
 
 ### Exit codes
 

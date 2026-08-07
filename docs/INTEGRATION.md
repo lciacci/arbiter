@@ -70,15 +70,31 @@ forward-looking form is: **don't add a fleet later.**
 > **BOUND — do not over-read it.** The second arm was a ~7× *weaker* model (qwen 30B alone: 0.073
 > recall, 0/8 criticals). A weak model's findings are a near-subset, so it *cannot* add union-recall;
 > the result is close to true by construction. **Directionally supportive, not settling.** The open
-> measurable is **peer-strength**: does a second *frontier* model decorrelate? Unmeasured.
+> measurable was **peer-strength**: does a second *frontier* reviewer decorrelate?
 >
-> **arbiter holds the countervailing anecdote**, and the canonical cites this repo for it: arbiter
-> and a workflow-backed `/code-review` looked at the same security boundary and produced six exploits
-> between them, one apiece missed by the other (`docs/STATE.md`, "Round 2"). That is a peer-strength
-> union-recall gain — but **confounded**, since the two differ in *architecture* (31 agents / 1.3M
-> tokens vs ~4 calls per file), not only in model. Conclave has a paid experiment queued to settle
-> it and is deliberately not spending yet, partly on the chance a `/code-review` head-to-head on the
-> typed-tool build answers it for free.
+> ## ⚠ MEASURED 2026-08-07 — peer-strength decorrelates, and the confound is gone
+>
+> **Conclave: the free answer you were waiting on has arrived. Read `../arbiter/docs/STATE.md` →
+> "Round 3" before spending on the queued experiment.**
+>
+> Three arms over one byte-identical diff (arbiter's own `975b491`, 4 files, 155 insertions):
+> **arbiter found 2 of 7 distinct defects, `/code-review ultra` found 4, a 17-agent workflow-backed
+> `/code-review` found all 7.** The result that matters: **arbiter and ultra each caught a defect the
+> other missed** — arbiter alone found the `--path` short-circuit (the highest-severity finding in
+> the set, a crash plus a path for `.env` contents to reach the API); ultra alone found three the
+> arbiter arm did not.
+>
+> **This is the Round 2 anecdote's confound removed.** Round 2's gain could always be explained by
+> *architecture* (31 agents / 1.3M tokens vs ~4 calls per file) rather than by a second reviewer. Here
+> the 17-agent arm found **all seven**, so fan-out scale explains ultra's misses but *cannot* explain
+> the one ultra missed and arbiter caught — a smaller, cheaper arm caught it. Union-recall from a
+> genuine peer holds at frontier strength.
+>
+> **Two bounds on the new result, and they are real.** n = 1 diff, in arbiter's own repo, on code
+> written that day — a corpus that flatters the arm most familiar with it. And arbiter's **2 of 7 is
+> the honest headline**: this is not evidence arbiter is competitive on recall, only that its
+> findings are not a subset. Guard (b) itself is **unchanged** — this measures reviewer-vs-reviewer
+> union-recall, not MODEL-diverse fleets, and **"no fleet for review" still stands.**
 
 **(c) Serving tiers ≠ routing policy.** Conclave *exposes* tiers; Tessera decides **when** to use
 them. A tier existing is not a decision to route to it.

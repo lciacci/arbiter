@@ -45,8 +45,56 @@ annotation, not the completeness; pure `docs:` commits are left out.
 | `db50d16` | CLAUDE.md scaffold filled; ruff added; the ballot truncation it found |
 | `46c42e3` | prompt caching on the finder prefix and the verification transcript |
 | `975b491` | **scope stops lying** — skipped files reported, `--path` authoritative, shebang detection |
+| `134cccc` | **the six defects three reviews found in `975b491`** — see Round 3 |
 
-## The measurement that matters
+## Round 3: three arms, one diff — the first unconfounded peer-strength result
+
+**2026-08-07.** Rounds 1 and 2 both predate the typed-tool rewrite, so neither
+described the current build. This one does, and it is the only head-to-head run
+with **three** arms on a byte-identical diff — `975b491`, the scope fix, 4 files,
+155 insertions, on a throwaway `h2h` branch cut at its merge-base so every arm
+could be pointed at the same thing.
+
+| # | Distinct defect | arbiter | plain `/code-review`, 17 agents | `ultra`, cloud |
+|---|---|:--:|:--:|:--:|
+| A | `_is_script` → `UnicodeDecodeError` on a binary, kills the whole run | ✅ med | ✅ | ✅ normal |
+| B | **`--path` short-circuits reviewability** → binary crash, `.env` to the API, cost amplifier | **✅ high** | ✅ (as 3) | ❌ |
+| C | All-skipped run → empty `--json`, no `--out`, exit 0 | ❌ | ✅ | ✅ nit |
+| D | stderr states one skip reason for a list carrying four | ❌ | ✅ | ✅ nit |
+| E | Duplicate `git show` per extensionless file | ❌ | ✅ | ✅ nit |
+| F | `--path`-excluded files never enter the skip list | ❌ | ✅ | ❌ |
+| G | `has_extension` is a one-caller wrapper | ❌ | ✅ | ❌ |
+
+**Union 7. arbiter 2, ultra 4, the 17-agent workflow 7.**
+
+**The load-bearing result, and it is the one conclave's queued experiment is
+about: arbiter and ultra each caught something the other missed.** arbiter has
+B; ultra has C, D and E. That is a genuine peer-strength union-recall gain on
+the current build — and unlike Round 2's anecdote it is **not confounded by
+architecture**, because the 17-agent arm found *all seven*. Scale explains
+ultra's misses; it does not explain B specifically, since a smaller fan-out
+caught it. Guard (b) in `INTEGRATION.md` is updated accordingly.
+
+**Do not read this as a win.** arbiter found **2 of 7**. It is nowhere near the
+workflow arm on recall, and both of its findings were a subset of that arm's.
+What it has is one high-severity catch the premium arm did not make. The
+positioning stays *cheap and portable*, not *better*.
+
+**The part worth internalising: all seven defects were in code arbiter had
+written that same day, and four of them were this project's own thesis turned
+back on it.** `975b491` shipped "a filter and a report of what the filter did
+are two features, not one" — and then left three more doors the report did not
+cover (C, D, F), plus a crash (A) and a security hole (B) introduced by the
+rescue path itself. Fixed in `134cccc`. The generalisation is in *Fail-open*
+below: **the fix for a class of defect is the most likely place to find the next
+instance of it.**
+
+Cost is **not comparable across the arms** and should not be quoted as a ratio:
+arbiter metered $1.56 / 46 calls / ~2 min at list price; the workflow arm
+reported 17 agents / 692k subagent tokens / 8 min on a different meter; ultra
+ran on the free tier and exposes no token count at all.
+
+## The measurement that matters (Round 1 — predates the typed-tool rewrite)
 
 A workflow-backed `/code-review` (31 agents, 1.3M tokens, ~9 min) and arbiter
 (~4 calls/file, ~2 min) reviewed the **same diff**:
@@ -108,11 +156,15 @@ is an argument for running both, not for picking one.
 
 ## Open, in priority order
 
-1. **Done twice — see Round 2 above.** The remaining unmeasured thing is whether
-   the typed-tool rewrite changed finding quality, since every head-to-head so
-   far used the old shell tool or none.
+1. **ANSWERED 2026-08-07 — see Round 3 at the top.** The open question was
+   whether the typed-tool rewrite changed finding quality, since rounds 1 and 2
+   both used the old shell tool or none. Three arms on one diff: arbiter found
+   **2 of 7** distinct defects, ultra 4, a 17-agent workflow all 7 — and arbiter
+   and ultra each caught one the other missed, which settles the peer-strength
+   question guard (b) had open. Recall is the honest headline and it is not
+   flattering; the decorrelation is the useful result.
 
-   **Partial answer, 2026-07-28, two runs on the typed-tool build** — arbiter on
+   **Earlier partial answer, 2026-07-28, two runs on the typed-tool build** — arbiter on
    its own diff, and on conclave's `harness/t1t3-matched-instrument`. Three
    blocking findings between them, each verified by hand before acting:
 
@@ -468,6 +520,36 @@ fixed the previous one. Each was defensive in intent:
    `continue` in that loop was the same bug waiting; the emptied-file skip was
    one and is now reported too. **A component that narrows scope owes the caller
    a list, not a count.**
+
+6. **A sixth, and it is instance 5's own fix (2026-08-07, `134cccc`).** Three
+   independent reviews of `975b491` — arbiter, a 17-agent workflow, a cloud
+   review — found seven defects in it (Round 3, top of this file). Four are this
+   same class, shipped *by the commit that was fixing this same class*:
+
+   - **`--path`-excluded files never entered the skip list.** `--path` is the
+     largest ceiling the tool has, and it was the one ceiling that stayed
+     unannounced. Instance 5 exactly, one door over.
+   - **A run that skipped everything returned before `render()`** — empty
+     `--json`, no `--out` file, exit 0, and the previous run's markdown left on
+     disk to be read as current. The false green survived *in the one channel a
+     gate actually reads*, which is the worst possible place for it to survive.
+   - **The stderr line named one skip reason for a list already collecting
+     four.** Not a false green — a false *diagnosis*, which sends the reader to
+     `--ext` for a file that was empty at head. Worse than saying nothing.
+   - **And the rescue path itself crashed.** `_is_script` opened extensionless
+     files to sniff a shebang and caught only `GitError`, so a committed binary
+     raised `UnicodeDecodeError` out of `subprocess.run` and killed the entire
+     run. The feature added to stop files going unreviewed made *every* file in
+     the diff go unreviewed.
+
+   **The generalisation, and it is the most useful thing in this document: the
+   fix for a class of defect is the most likely place to find the next instance
+   of it.** Not because the author is careless — because a fix is written by
+   someone thinking about the *old* instance, in new code that nothing has
+   reviewed yet, under the confidence of having just understood the problem.
+   Four of the seven were found by the two arms that were *not* arbiter, so this
+   is also the argument for running a second reviewer over exactly the commits
+   you are most sure about.
 
 **The rule, and instance 5 widens it: when adding a fallback here, ask what a
 *gate* will conclude from it. If the answer is "pass", it is wrong.** A silent

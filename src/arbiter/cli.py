@@ -149,9 +149,9 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None,
     # is the artefact that gets pasted into a PR — and an unstated skip is what
     # turns "0 blocking" into a claim about files nothing opened.
     if skipped:
-        out += [(f"> **{len(skipped)} changed file(s) were not reviewed** — not code by "
-                 "extension or shebang, or empty at head. `--ext` widens the set; "
-                 "`--path` overrides it outright:"), ""]
+        out += [(f"> **{len(skipped)} changed file(s) were not reviewed** — outside `--path`, "
+                 "not code by extension or shebang, not text, or empty at head. `--ext` widens "
+                 "the extension set; `--path` overrides it:"), ""]
         out += [f"> - `{p}`" for p in skipped[:20]]
         if len(skipped) > 20:
             out += [f"> - _…and {len(skipped) - 20} more._"]
