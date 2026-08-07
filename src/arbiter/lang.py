@@ -42,11 +42,23 @@ def _ext(path: str) -> str:
     return ext.lower() if stem else ""
 
 
+def has_extension(path: str) -> bool:
+    """True if the basename carries an extension at all.
+
+    The gate on shebang sniffing: only a file with no extension is worth
+    opening to ask whether it is a script. Everything else has already told us
+    what it is, and reading it would cost a `git show` per changed log file.
+    """
+    return bool(_ext(path))
+
+
 def is_reviewable(path: str, exts: frozenset[str] | set[str] = DEFAULT_EXTS) -> bool:
     """True if this path's extension is in the review set.
 
-    Extensionless files are skipped. Shell scripts without a `.sh` suffix are
-    common (git hooks, `scripts/gate`), so callers that care should pass an
-    explicit path list rather than relying on extension sniffing.
+    Extensionless files fail here — `bin/tessera-verify` is not a file of type
+    "" — so `change_units` gives them a second chance by shebang, and reports
+    whatever it still drops. This function used to be the whole scope decision
+    and its own docstring's advice ("pass an explicit path list") was not
+    honoured by the caller; both are fixed there, not here.
     """
     return _ext(path) in exts

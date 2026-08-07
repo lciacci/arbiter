@@ -125,7 +125,8 @@ def ref_label(ref: str, sha: str) -> str:
     return ref if sha.startswith(ref) else f"{ref} ({sha[:8]})"
 
 
-def render(results: list[dict], base: str, head: str, spend: dict | None = None) -> str:
+def render(results: list[dict], base: str, head: str, spend: dict | None = None,
+           skipped: list[str] | None = None) -> str:
     blocking = [(r["path"], f) for r in results for f in r["blocking"]]
     advisory = [(r["path"], f) for r in results for f in r["advisory"]]
     dropped = sum(len(r["dropped"]) for r in results)
@@ -133,15 +134,28 @@ def render(results: list[dict], base: str, head: str, spend: dict | None = None)
     errored = [r for r in results if r.get("error")]
     degraded = [r for r in results if r.get("triage_note")]
     reviewed = len(results) - len(errored)
+    skipped = skipped or []
     out = [
         f"# arbiter — `{head}` vs `{base}`",
         "",
         (f"{reviewed} file(s) reviewed · "
-         f"**{len(blocking)} blocking** ({sum(gates_exit(f) for _, f in blocking)} "
+         + (f"**{len(skipped)} changed file(s) not reviewed** · " if skipped else "")
+         + f"**{len(blocking)} blocking** ({sum(gates_exit(f) for _, f in blocking)} "
          f"high or critical — those alone exit 1) · "
          f"{len(advisory)} advisory · {dropped} dropped by triage"),
         "",
     ]
+    # The skip is stated in the report, not only on stderr, because the report
+    # is the artefact that gets pasted into a PR — and an unstated skip is what
+    # turns "0 blocking" into a claim about files nothing opened.
+    if skipped:
+        out += [(f"> **{len(skipped)} changed file(s) were not reviewed** — not code by "
+                 "extension or shebang, or empty at head. `--ext` widens the set; "
+                 "`--path` overrides it outright:"), ""]
+        out += [f"> - `{p}`" for p in skipped[:20]]
+        if len(skipped) > 20:
+            out += [f"> - _…and {len(skipped) - 20} more._"]
+        out += [""]
     if errored:
         out += [f"> **{len(errored)} file(s) failed to review** — not clean, unreviewed:", ""]
         out += [f"> - `{r['path']}`: {r['error']}" for r in errored]
@@ -204,10 +218,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--head", default="HEAD", help="head ref (default: HEAD)")
     p.add_argument("--repo", default=".", help="path inside the repo to review (default: cwd)")
     p.add_argument("--ext", action="append", default=None,
-                   help=f"extension to review, repeatable (default: {' '.join(sorted(DEFAULT_EXTS))})")
+                   help="extension to review, repeatable (default: "
+                        f"{' '.join(sorted(DEFAULT_EXTS))}). Extensionless files are reviewed "
+                        "when they start with a shebang, whatever this is set to")
     p.add_argument("--path", action="append", default=None,
                    help="limit review to these paths or globs, repeatable "
-                        "(default: everything changed)")
+                        "(default: everything changed). Authoritative: a path named here is "
+                        "reviewed whether or not it looks like code")
     p.add_argument("--jobs", type=int, default=4, help="files reviewed concurrently (default: 4)")
     p.add_argument("--out", default=None, help="write markdown here instead of stdout")
     p.add_argument("--json", action="store_true", help="emit raw JSON instead of markdown")
@@ -226,12 +243,20 @@ def main(argv: list[str] | None = None) -> int:
         # repo mid-run cannot move the code out from under the review.
         base, head = resolve_ref(repo, args.base), resolve_ref(repo, args.head)
         exts = frozenset(e.lstrip(".").lower() for e in args.ext) if args.ext else DEFAULT_EXTS
-        units = change_units(repo, base, head, exts, args.path)
+        units, skipped = change_units(repo, base, head, exts, args.path)
     except GitError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
     base_label, head_label = ref_label(args.base, base), ref_label(args.head, head)
+
+    # Before the empty-state return, not after: "no reviewable changes" over a
+    # diff that changed twenty files is the false green this whole path exists
+    # to kill, and that branch never reaches render().
+    if skipped:
+        shown = ", ".join(skipped[:5]) + (f", +{len(skipped) - 5} more" if len(skipped) > 5 else "")
+        print(f"Not reviewed ({len(skipped)} changed file(s), no code extension or "
+              f"shebang): {shown}", file=sys.stderr)
 
     if not units:
         print(f"No reviewable changes in {head_label} vs {base_label}.", file=sys.stderr)
@@ -290,9 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     body = (
-        json.dumps({"results": results, "usage": spend}, indent=2)
+        json.dumps({"results": results, "usage": spend, "skipped": skipped}, indent=2)
         if args.json
-        else render(results, base_label, head_label, spend)
+        else render(results, base_label, head_label, spend, skipped)
     )
 
     if args.out:

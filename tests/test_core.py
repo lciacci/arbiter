@@ -824,3 +824,65 @@ def test_finder_path_marks_its_system_prompt(monkeypatch):
     )
     call_tool("sys", "msg", {"name": "report_findings"}, cache_prefix=True)
     assert seen["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+# ---------- scope is announced, and --path is authoritative ----------
+
+from arbiter.vcs import change_units
+
+#
+# Two runs against tessera printed "1 file(s) reviewed · 0 blocking" having
+# never opened the file under review: is_reviewable() dropped an extensionless
+# shebang script and nothing said so. A review narrower than it claims makes
+# every clean result unfalsifiable, which is the one thing this tool sells.
+
+def _scope_repo(tmp_path):
+    """A repo whose second commit changes one file of each interesting shape."""
+    repo, git = _repo(tmp_path)
+    (repo / "bin").mkdir()
+    (repo / "bin" / "tool").write_text("#!/usr/bin/env bash\nrm -rf $1\n")   # no extension
+    (repo / "notes.md").write_text("# notes\n")                             # not code
+    (repo / "a.py").write_text("x = 2\n")                                   # code
+    git("add", "-A")
+    git("commit", "-qm", "two")
+    return repo, git
+
+
+def test_extensionless_shebang_script_is_reviewed(tmp_path):
+    repo, _ = _scope_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD")
+    assert {u["path"] for u in units} == {"a.py", "bin/tool"}
+    assert skipped == ["notes.md"]
+
+
+def test_a_dropped_file_is_reported_not_swallowed(tmp_path):
+    """The cheapest half of the fix: an announced skip is a ceiling, an
+    unannounced one is a false green.
+
+    Also pins that `--ext` does not disable shebang sniffing. Narrowing to
+    `py` still reviews `bin/tool`, because a file with no extension is not a
+    member of *any* extension set — leaving it to `--ext` would restore the
+    silent drop under a different flag. `--path` is the lever for precision.
+    """
+    repo, _ = _scope_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD", exts=frozenset({"py"}))
+    assert skipped == ["notes.md"]
+    assert "bin/tool" in {u["path"] for u in units}
+
+
+def test_path_overrides_the_extension_filter(tmp_path):
+    """is_reviewable used to run *before* matches_any, so --path could not
+    rescue anything the extension set had already dropped — and the docstring
+    telling callers to pass an explicit path list was not honoured."""
+    repo, _ = _scope_repo(tmp_path)
+    units, skipped = change_units(repo, "HEAD~1", "HEAD", paths=["notes.md"])
+    assert [u["path"] for u in units] == ["notes.md"]
+    assert skipped == []
+
+
+def test_render_states_the_skip_in_the_report_body():
+    """stderr scrolls away; the markdown is what gets pasted into a PR."""
+    out = render([ok()], "main", "HEAD", skipped=["bin/tool"])
+    assert "1 changed file(s) not reviewed" in out
+    assert "`bin/tool`" in out
+    assert "not reviewed" not in render([ok()], "main", "HEAD")

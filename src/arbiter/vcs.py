@@ -16,7 +16,7 @@ import subprocess
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .lang import DEFAULT_EXTS, is_reviewable
+from .lang import DEFAULT_EXTS, has_extension, is_reviewable
 
 
 class GitError(RuntimeError):
@@ -144,20 +144,60 @@ def matches_any(path: str, patterns: list[str]) -> bool:
     )
 
 
+def _is_script(repo: Path, ref: str, path: str) -> bool:
+    """True if an extensionless file's head-state opens with a shebang.
+
+    The extension filter alone dropped every `bin/tessera-verify`-shaped file
+    and said nothing, so a run printed "1 file(s) reviewed · 0 blocking" over
+    code it never opened. Gated on `has_extension` so this costs one `git show`
+    per extensionless changed file and nothing at all for the rest.
+
+    A read failure returns False, which drops the file into the *reported*
+    skip list rather than into silence. That is the fail-closed direction: the
+    file goes unreviewed either way, but the report says so.
+    """
+    if has_extension(path):
+        return False
+    try:
+        return _content_at(repo, ref, path).startswith("#!")
+    except GitError:
+        return False
+
+
 def change_units(
     repo: Path,
     base: str,
     head: str = "HEAD",
     exts: frozenset[str] | set[str] = DEFAULT_EXTS,
     paths: list[str] | None = None,
-) -> list[dict]:
-    """Reviewable units for a ref range. Deletions and non-code files skipped."""
+) -> tuple[list[dict], list[str]]:
+    """(reviewable units, paths dropped for not being code) for a ref range.
+
+    The second element is the point: a file this tool declines to review is a
+    ceiling on every clean result it prints, and an unannounced ceiling makes a
+    green unfalsifiable. Deletions are not listed — there is no after-state to
+    review and their absence surprises nobody.
+
+    Scope is decided in three steps, in this order:
+
+    1. `--path` filters first. It is then **authoritative**: an explicit path
+       list is a deliberate statement of what to review, so it overrides
+       extension sniffing entirely. It used to run *after* the extension
+       filter, which meant it could not rescue anything the extension filter
+       had already dropped.
+    2. A known code extension passes.
+    3. Failing both, an extensionless file passes if it starts with a shebang.
+    """
     rng = _range_args(repo, base, head)
     units: list[dict] = []
+    skipped: list[str] = []
     for status, path, old_path in changed_files(repo, base, head, rng):
-        if status == "D" or not is_reviewable(path, exts):
+        if status == "D":
             continue
         if not matches_any(path, paths or []):
+            continue
+        if not (paths or is_reviewable(path, exts) or _is_script(repo, head, path)):
+            skipped.append(path)
             continue
 
         # A (added) and C (copied) both produce a file that did not exist at
@@ -175,6 +215,7 @@ def change_units(
 
         after = _content_at(repo, head, path)
         if not after.strip():
+            skipped.append(path)
             continue
         units.append(
             {
@@ -190,4 +231,4 @@ def change_units(
                 "diff": _git(repo, "diff", *rng, "--", *pathspec),
             }
         )
-    return units
+    return units, skipped
