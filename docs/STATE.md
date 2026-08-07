@@ -148,6 +148,54 @@ instrument again rather than think harder.
 arm still found all seven. Nothing here makes arbiter competitive on the
 blocking tier, which is the tier that is the product.
 
+### REFUTED, same day: "the triage prompt leaks severity, remove the clause"
+
+Acting on the finding above, two edits were made to `ARBITER_VOICE` and scored
+over three more runs ($4.24). **Both were wrong, and the result is worth more
+than the fix would have been.**
+
+The diagnosis was that `Vote UNSURE if the issue is real but small` is a
+*severity* judgment inside a *reality* judgment — UNSURE lands advisory, so real
+bugs were being demoted for being small, and severity is already gated
+downstream by `findings.gates_exit`. That reads as the mirror image of the bug
+`eef0cdc` fixed. The second edit stopped `ARBITER_VOICE` dropping findings that
+"apply to unchanged code", since C and F are unchanged code the diff made wrong.
+
+| | pre-change, 4 runs | post-change, 3 runs |
+|---|---|---|
+| Blocking-tier true positives | A, B | B, F |
+| `has_extension` false positive | dropped ×2, advisory ×1 | **blocking ×2 of 3** |
+
+F reached blocking for the first time — a real recall win. But the
+`has_extension` "inverted semantics" finding, which is **false** (it returns
+True when a file has an extension, and the caller negates it correctly),
+was promoted to **blocking in two of three runs**, having never previously got
+past advisory.
+
+**The clause was not a severity leak. It was a false-positive brake.** A voice
+with no tools cannot distinguish "real but small" from "asserted with
+conviction and wrong"; UNSURE was where the second kind landed. Removing it left
+KEEP as the only home for a confident falsehood. The trade was one recall point
+for a recurring false positive *at the tier that gates* — a bad trade for a tool
+whose entire value is that a blocking finding means something. Reverted.
+
+**The second lesson is about the experiment, not the prompt.** The Round 3 diff
+has 7 labelled true positives and **zero labelled false positives**, so it
+cannot measure precision — the axis the change actually moved. The regression
+was caught by hand-checking one finding, not by the test. **A corpus that can
+only measure recall will approve any change that trades precision for it.** That
+is what motivated wiring up pr-arbiter's corpus (`scripts/eval_corpus.py`),
+which carries 55 expected findings across 20 PRs *and three negative controls
+with zero expected findings* — a dedicated precision signal.
+
+**Still unexplored, and now testable:** triage calls `call_tool`, while the
+finders call `call_tool_verified`. The voices are asked "can you reproduce this
+from the code" while unable to read anything outside the single file in the
+prompt — confirming the `has_extension` finding is wrong requires reading its
+caller in another file. Giving triage the inspection tools is the untried lever,
+and it is the expensive one: verification tripled finder cost, and triage is
+currently the cheap step. **Do not try it without scoring precision.**
+
 ## The measurement that matters (Round 1 — predates the typed-tool rewrite)
 
 A workflow-backed `/code-review` (31 agents, 1.3M tokens, ~9 min) and arbiter
