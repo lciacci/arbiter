@@ -146,8 +146,10 @@ it because it was "only logging". Found by ruff (B905), fixed in `db50d16`.
 Reviews used to be silently narrower than they claimed: `is_reviewable()`
 filtered on extension, extensionless shebang scripts were dropped, and nothing
 in the output said so. All three parts landed — skipped files are named in the
-stderr line *and* the report body, `--path` runs first and is authoritative, and
-extensionless files are picked up by shebang. Confirmed against the diff that
+stderr line *and* the report body, `--path` runs first, and extensionless files
+are picked up by shebang. (`--path` was briefly authoritative over *everything*;
+`134cccc` narrowed it to the extension set after three reviews found that the
+stronger form crashed on binaries and would have read a `.env` into the API.) Confirmed against the diff that
 exposed it (`--base 84c63cc --head 9b73e27` in tessera): `bin/tessera-watch`
 reviewed by default, 2 blocking, both `.md` files named as skipped, $1.51.
 Full account in `STATE.md` item 7.

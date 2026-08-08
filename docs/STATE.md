@@ -543,7 +543,10 @@ is an argument for running both, not for picking one.
      the path where a false green was cheapest to produce.
    - **`--path` is authoritative** and runs first. A named path is reviewed
      whether or not it looks like code, which is what the docstring had been
-     promising and the CLI had been refusing.
+     promising and the CLI had been refusing. **Superseded by `134cccc`** — that
+     form was too strong and is instance 6 below: it crashed on binaries and
+     would have shipped a `.env` to the API. `--path` now overrides the
+     extension set only.
    - **Shebang detection**, gated on `has_extension` so it costs one `git show`
      per extensionless changed file and nothing for the rest. Tessera hit the
      identical blind spot in its iCPG extractor (ADR-0017).

@@ -90,6 +90,34 @@ forward-looking form is: **don't add a fleet later.**
 > the one ultra missed and arbiter caught — a smaller, cheaper arm caught it. Union-recall from a
 > genuine peer holds at frontier strength.
 >
+> ## ⚠ ALSO 2026-08-07 — scored on YOUR corpus, and arbiter's role-diverse union underperforms yours
+>
+> Later the same day arbiter wired up pr-arbiter's corpus as a scoring harness (`scripts/eval_corpus.py`,
+> corpus vendored into `corpus/`) and reused **your matcher verbatim** so the numbers are comparable.
+> 20 PRs, 55 expected findings. Set against the arms quoted above:
+>
+> | arm | recall | FP |
+> |---|---|---|
+> | guard (b) best single (claude reviewer) | 0.509 | 30 |
+> | guard (b) **ROLE**-diverse union | **0.618** | 35 |
+> | **arbiter, raw union (`--no-triage`)** | **0.564** | 36 |
+> | arbiter, shipped (with triage) | 0.509 | 30 |
+> | arbiter, blocking tier only — *the product* | **0.345** | 22 |
+>
+> **arbiter is the ROLE-diverse design, and its raw union scores 0.564 against your 0.618.** Same
+> corpus, same matcher, 0.054 short. Different codebase, prompts and possibly model, so this is a
+> **lead, not a refutation** — but it is the first evidence that a port of this architecture is worth
+> measurably less than the architecture, and it is worth knowing before guard (b)'s role-diversity
+> number is leaned on as a property of the *pattern* rather than of pr-arbiter's implementation of it.
+>
+> **Nothing here challenges guard (b).** No fleet was run; MODEL diversity was not tested. "One strong
+> model plus role-differentiated prompts, no fleet for review" stands unchanged.
+>
+> Second thing worth your attention: arbiter's triage costs exactly what its second pass adds
+> (−3 true positives, −6 false positives), and on the **three negative controls it removed zero false
+> positives and promoted one to blocking**. Full account in `../arbiter/docs/STATE.md` → "Corpus
+> baseline, 2026-08-07".
+>
 > **Two bounds on the new result, and they are real.** n = 1 diff, in arbiter's own repo, on code
 > written that day — a corpus that flatters the arm most familiar with it. And arbiter's **2 of 7 is
 > the honest headline**: this is not evidence arbiter is competitive on recall, only that its
