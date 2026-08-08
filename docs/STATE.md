@@ -232,14 +232,44 @@ erased downstream** — which is the same conclusion the rerun-variance work
 reached from a completely different direction on the same day, and the two were
 measured independently.
 
-**Do not treat this as established.** Two integers matching is suggestive, not
-proof; the arms differ in codebase, prompts, and possibly model. **The cheap
-test is `--no-triage`, which puts every finding in advisory and skips the voices
-entirely.** If pre-triage recall lands near 0.618, the union is real and triage
-is destroying it. If it lands at 0.509, the second pass is not adding what the
-design assumes and the problem is upstream of triage. One run, cheaper than this
-one because it skips the triage calls, and it discriminates between the two
-hypotheses this project has been circling all day.
+**ANSWERED the same day by `--no-triage` ($3.42), and it refused both clean
+options.** Raw union, voices skipped: **31/55 = 0.564, 36 FP.**
+
+| run | recall | FP |
+|---|---|---|
+| raw union (`--no-triage`) | **0.564** | 36 |
+| with triage (the baseline) | 0.509 | 30 |
+| guard (b) single reviewer | 0.509 | 30 |
+| guard (b) role-diverse union | 0.618 | 35 |
+
+**Triage costs precisely what the second pass adds: −3 true positives, −6 false
+positives.** So the exact landing on 0.509 was real but the mechanism was not
+either hypothesis. The second pass *does* contribute (+0.055 over the
+single-reviewer reference); triage then removes the same amount. Net zero
+against one reviewer, at −6 FP.
+
+**Two things that changes.**
+
+1. **"Triage destroys the union" is too strong.** It is trading recall for
+   precision at roughly one true positive per two false positives. For a
+   blocking gate that trade is defensible on its face.
+2. **Except it does not hold where it matters.** On the three negative
+   controls — the PRs with no real bugs, where every finding is a false positive
+   by construction — **triage removed none of them and promoted one to
+   blocking** (`pr_007`, 2 FP either way, one blocking after triage). The filter
+   works on PRs that contain real bugs and fails on the ones that do not, which
+   is the population a clean gate has to survive.
+
+**And a separate gap worth its own line: the raw union is 0.564 against guard
+(b)'s 0.618 for the same role-diverse design.** arbiter's reviewer + second pass
+underperform conclave's measurement of that architecture by 0.054. Different
+codebase, prompts and possibly model, so this is a lead rather than a defect —
+but it is the first evidence that arbiter's role diversity is worth less than
+the design it was ported from.
+
+**The blocking tier remains the real problem: 0.345 with 22 false positives.**
+Neither of these runs moves it, because `--no-triage` produces no blocking tier
+at all.
 
 ### The organic corpus, and why it has to grow
 

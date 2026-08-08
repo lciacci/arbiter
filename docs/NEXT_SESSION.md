@@ -211,30 +211,41 @@ explains the planted credential in `pr_001` that blocks GitHub pushes, and how
 to tell it from a real leak). Blocking is scored separately from
 blocking+advisory because blocking is the product.
 
-**START HERE — one cheap run discriminates between the two hypotheses this
-project spent a day circling.**
+**START HERE — triage fails on exactly the PRs a gate has to survive.**
 
-```bash
-python3 scripts/eval_corpus.py --arbiter-arg --no-verify   # NOT this one
-python3 scripts/eval_corpus.py --arbiter-arg --no-triage   # THIS one
+`--no-triage` answered the open question ($3.42) and refused both clean options.
+Raw union **0.564 / 36 FP**; with triage **0.509 / 30 FP**. So triage costs
+precisely what the second pass adds — **−3 true positives, −6 false positives**
+— and the earlier exact match with guard (b)'s single-reviewer arm was real but
+not for either reason guessed.
+
+That trade is defensible on its face. **It does not hold where it matters:**
+
+```
+pr_007 (negative control, zero real bugs)
+  --no-triage : 2 FP, both advisory
+  with triage : 2 FP, one promoted to BLOCKING
 ```
 
-arbiter's blocking+advisory score is **0.509 recall / 30 FP**. Guard (b) in
-`INTEGRATION.md` records conclave's measurement on this same corpus with this
-same matcher: **best single reviewer 0.509 / 30 FP**, role-diverse union
-0.618 / 35. Both quantities match the single-reviewer arm *exactly* — and
-arbiter is supposed to be the role-diverse design.
+Across all three negative controls, **triage removed zero false positives and
+promoted one to the gating tier.** It filters on PRs that contain real bugs and
+fails on the ones that do not — which is the population a clean gate must
+survive, and the population every green result comes from.
 
-`--no-triage` puts every finding in advisory and skips the voices. Then:
+**That is the thread to pull.** The blocking tier is the product and it sits at
+**0.345 recall / 22 FP**; neither run above moves it, because `--no-triage`
+produces no blocking tier at all. Full account in `STATE.md` → "Corpus baseline".
 
-- **lands near 0.618** → the union is real and **triage is destroying it**,
-  which also explains why reruns never move the blocking tier. Fix triage.
-- **lands at 0.509** → the second pass is not adding what the design assumes,
-  and the problem is upstream of triage entirely. Fix the second pass.
+**Do not start by rewriting the voices' prompts.** That was tried today and
+refuted (below), and the negative-control result points somewhere more specific:
+the voices are being asked to judge a finding with no way to check it. The
+untried lever is item 1.
 
-Those have opposite fixes, and today produced evidence for the first from two
-independent directions without ever testing it directly. **Do not skip this and
-start tuning triage.** Cheaper than the baseline, since it skips the triage calls.
+**A separate lead, worth its own run:** the raw union is **0.564** against guard
+(b)'s **0.618** for the same role-diverse design. arbiter's reviewer + second
+pass are worth 0.054 less than the architecture they were ported from. Different
+codebase and prompts, so it is a lead rather than a defect — but nobody has
+looked.
 
 **Then, in rough order:****Then, in rough order:**
 
