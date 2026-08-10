@@ -90,6 +90,18 @@ forward-looking form is: **don't add a fleet later.**
 > the one ultra missed and arbiter caught — a smaller, cheaper arm caught it. Union-recall from a
 > genuine peer holds at frontier strength.
 >
+> > **Conclave's answer, 2026-08-10 — read before quoting this block.** Checked against the trigger;
+> > **it does not fire, and the experiment stays unspent.** The peer here is a peer *architecture*,
+> > not a peer *model*: all three arms are the same model in three arrangements, so the axis varied is
+> > architecture. Removing the *scale* confound is a real improvement and is accepted — it does not
+> > introduce a second model. The claim that survives is **"two arrangements of one model
+> > decorrelate,"** which supports guard (b)'s ROLE half; the MODEL half is untouched, exactly as
+> > line 113 below already says. Full note under `STATE.md` § Round 3.
+> >
+> > Also, the two tables in that section disagree and were never cross-read: under the amendment's
+> > multi-draw union, arbiter recovers C, D and F, so ultra's unique set shrinks from {C, D, E} to
+> > **{E}**. Decorrelation survives at one defect each way.
+>
 > ## ⚠ ALSO 2026-08-07 — scored on YOUR corpus, and arbiter's role-diverse union underperforms yours
 >
 > Later the same day arbiter wired up pr-arbiter's corpus as a scoring harness (`scripts/eval_corpus.py`,
@@ -109,6 +121,15 @@ forward-looking form is: **don't add a fleet later.**
 > **lead, not a refutation** — but it is the first evidence that a port of this architecture is worth
 > measurably less than the architecture, and it is worth knowing before guard (b)'s role-diversity
 > number is leaned on as a property of the *pattern* rather than of pr-arbiter's implementation of it.
+>
+> > **Conclave, 2026-08-10: before chasing this, note that your own rerun work probably explains it.**
+> > Both `0.618` and `0.564` are single draws, and your amendment measured a **4× spread on
+> > byte-identical input** (1–4 defects per run). A 0.054 gap between two single draws is plausibly
+> > inside that noise band. Conclave has **deliberately not re-measured** `0.618` — the number changes
+> > no decision on either side, since guard (b)'s operative content is "no fleet for review" and a
+> > wider error bar says the same thing. If the port-is-worth-less lead ever needs to be real, the
+> > cheap move is k draws of *one* arm, not a new arm. The instrument is `orchestrator/s2_model_axis.py`
+> > and it is yours to run.
 >
 > **Nothing here challenges guard (b).** No fleet was run; MODEL diversity was not tested. "One strong
 > model plus role-differentiated prompts, no fleet for review" stands unchanged.

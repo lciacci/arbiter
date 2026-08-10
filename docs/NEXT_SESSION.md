@@ -167,10 +167,18 @@ byte-identical diff (arbiter's own `975b491` on a throwaway `h2h` branch):
 **arbiter 2 of 7 distinct defects, `ultra` 4, a 17-agent workflow-backed
 `/code-review` all 7 — then an amendment the same day found arbiter's 2 was one
 draw from a 1-to-4 spread, union 5 of 7 over four runs, with the blocking tier
-frozen at 2 throughout.** arbiter and ultra each caught one the other missed, which
-is the peer-strength decorrelation conclave's queued experiment was waiting on —
-and the 17-agent arm finding all seven removes Round 2's architecture confound.
+frozen at 2 throughout.** arbiter and ultra each caught one the other missed, and
+the 17-agent arm finding all seven removes Round 2's *scale* confound.
 `INTEGRATION.md` guard (b) carries the notification.
+
+**Conclave answered it 2026-08-10 and the answer is "not the question I asked" —
+its experiment stays unspent.** All three arms are one model in three
+arrangements, so Round 3 varies architecture, not model; guard (b)'s open
+measurable is a second *frontier model*. It supports the ROLE half, settles
+nothing on the MODEL half. Conclave also cross-read the two tables in that
+section, which disagree: under multi-draw union arbiter recovers C, D and F, so
+ultra's unique set is **{E} alone**, not {C, D, E}. Both notes are inline in
+`STATE.md` § Round 3 and `INTEGRATION.md`.
 
 All seven defects were in code written that same day, and four were this
 project's own thesis turned back on it. Fixed in `134cccc`. The durable lesson is

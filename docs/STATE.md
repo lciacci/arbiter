@@ -77,6 +77,34 @@ architecture**, because the 17-agent arm found *all seven*. Scale explains
 ultra's misses; it does not explain B specifically, since a smaller fan-out
 caught it. Guard (b) in `INTEGRATION.md` is updated accordingly.
 
+> **Correction from conclave, 2026-08-10 — written into this repo, not proposed to it.** Conclave
+> owns the union-recall instrument guard (b) is scored on, so two things here land in its lane.
+>
+> **1. This does not settle guard (b)'s open question, because no arm varied the model.** arbiter,
+> the 17-agent workflow and `ultra` are all the same model in three arrangements. Guard (b)'s open
+> measurable is specifically *"does a second **frontier model** decorrelate on union-recall?"* Round 3
+> varies **architecture** — the Round 2 confound one rung better controlled. The 17-agent arm finding
+> all seven does rule out *scale* as the explanation for B, and that is a real improvement, but ruling
+> out scale does not introduce a second model. The accurate claim is **"two arrangements of one model
+> decorrelate,"** which *supports* guard (b)'s ROLE half rather than settling its MODEL half.
+> Conclave's queued peer-strength experiment stays unspent: its trigger was "spend if the gap looks
+> model-shaped," and this gap is scale- and triage-shaped.
+>
+> **2. The amendment below refutes three of the four misses in the table above it, and the two tables
+> were never cross-read.** Under multi-draw union — the amendment's own framing — arbiter recovers
+> **C, D and F**. So ultra's set of catches-arbiter-missed shrinks from {C, D, E} to **{E} alone**.
+> The decorrelation result survives and is arguably cleaner (one defect each way, B vs E, and E is the
+> one arbiter is blind to across all four runs) — but **"arbiter 2, ultra 4" and "union 5 of 7 across
+> four runs" are not the same experiment, and the second supersedes the first.** Publishing both in
+> one section without reconciling them invites the stronger single-draw number to be quoted.
+>
+> **What conclave took in exchange**, both recorded in `../conclave/docs/INTEGRATION.md` § Guard 2:
+> its own S2 table is single-draw point estimates, so `0.618` is now quoted as a direction rather than
+> a value; and the required control arm for any future model-diversity run is **same-model-k-draws**,
+> not best-single — a second draw from one model took arbiter 2 → 5 of 7, so a second *model* has to
+> beat that or it is being credited for a re-draw effect. Deliberately **not** re-measured: the number
+> changes no decision, and the instrument is the deliverable, not its output.
+
 **Do not read this as a win.** arbiter found **2 of 7**. It is nowhere near the
 workflow arm on recall, and both of its findings were a subset of that arm's.
 What it has is one high-severity catch the premium arm did not make. The
@@ -368,9 +396,14 @@ is an argument for running both, not for picking one.
    whether the typed-tool rewrite changed finding quality, since rounds 1 and 2
    both used the old shell tool or none. Three arms on one diff: arbiter found
    **2 of 7** distinct defects, ultra 4, a 17-agent workflow all 7 — and arbiter
-   and ultra each caught one the other missed, which settles the peer-strength
-   question guard (b) had open. Recall is the honest headline and it is not
-   flattering; the decorrelation is the useful result.
+   and ultra each caught one the other missed. Recall is the honest headline and
+   it is not flattering; the decorrelation is the useful result.
+
+   **Amended by conclave 2026-08-10 (see the note under Round 3): this does NOT
+   settle guard (b)'s peer-strength question.** No arm varied the model — all
+   three are one model in three arrangements — so it varies architecture, not
+   model. It supports guard (b)'s ROLE half; the MODEL half stays open and
+   conclave's paid experiment stays unspent.
 
    **Earlier partial answer, 2026-07-28, two runs on the typed-tool build** — arbiter on
    its own diff, and on conclave's `harness/t1t3-matched-instrument`. Three
