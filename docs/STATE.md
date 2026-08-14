@@ -506,31 +506,57 @@ is an argument for running both, not for picking one.
    *Fail-open* below: not a wrong answer, a confident claim about work that
    never happened. Re-measure with `count_tokens` before adding one.
 
-   **The cheap-model lever is measured, and it is dead (conclave, 2026-08-07).**
-   Written here by conclave rather than proposed, because it is a fact about
-   conclave's substrate that lands in this repo's cost path. Swapping the finder
-   to a cheap self-hosted model is the obvious next cost move after caching, and
-   it does not work: on **this project's own corpus** — pr-arbiter's 20 PRs, 55
-   expected findings, the reviewer prompt verbatim, their matcher — a local
-   Qwen3-Coder-30B scores **0.073 recall and 0/8 criticals** against
-   claude-sonnet's **0.509** on the identical task. Not confabulation: it parsed
-   cleanly every time and correctly returned zero on all three negative-control
-   PRs. It under-detects, ~1 finding per PR where 3–5 exist.
+   ~~**The cheap-model lever is measured, and it is dead (conclave, 2026-08-07).**~~
+   **🔴 RETRACTED AND RE-OPENED by conclave, 2026-08-14.** Written here by conclave
+   rather than proposed, for the same reason as the original: it is a fact about
+   conclave's substrate that lands in this repo's cost path — and this time the
+   fact reverses the conclusion, so leaving it uncorrected would have kept a dead
+   number closing a live option.
 
-   The load-bearing part is *why*, because it is not "small model bad". The same
-   local model **matches** a hosted FP8 80B on edit-and-apply (3/3 byte-identical
-   over three tasks, zero edit rejects) while losing ~7× on find-the-defect.
-   **Task shape, not model tier, is what breaks.** Review is the shape that
-   breaks it — which is this tool's entire workload.
+   **What was wrong.** The 0.073 figure was `qwen3-coder:30b` at
+   `max_tokens=4096` — a starved budget — and it was quoted as a property of the
+   local *tier* rather than of one model. At a matched 16384 budget that same
+   model scores **0.127**. A current same-footprint open-weight model scores far
+   better. All on **this project's own corpus**: pr-arbiter's 20 PRs, 55 expected
+   findings, the reviewer prompt verbatim, their matcher.
 
-   Consequence for the D3 seam: `ANTHROPIC_BASE_URL` → conclave's gateway works
-   mechanically and buys nothing at the `local-mid` tier. Caching, `--path`
-   scoping and `--no-verify` remain the real levers. Conclave's model-axis run
-   also found MODEL-diverse union adds **+0.000 recall and +20 false positives**
-   over a single reviewer, so a *fleet* of finders is not a cost or quality play
-   either — though that arm used a weaker second model and so cannot speak to
-   peer-strength diversity. Evidence:
-   `../conclave/docs/LOCAL-CODER-FAILURES.md`, `../conclave/orchestrator/s2_model_axis.py`.
+   | reviewer | recall | criticals | false positives | cost |
+   |---|---|---|---|---|
+   | claude-sonnet | 0.509 | 6/8 | 30 | ~$0.79/file |
+   | **`muse-glimmer:30b`** (Meta, Apache 2.0, Aug 2026) | **0.309** | **5/8** | **15** | **$0** |
+   | `qwen3-coder:30b` @16384 | 0.127 | 1/8 | 13 | $0 |
+   | ~~`qwen3-coder:30b` @4096 — the retracted figure~~ | ~~0.073~~ | ~~0/8~~ | ~~16~~ | — |
+
+   **Why this re-opens rather than settles.** The local model finds ~60% of the
+   true findings with **half** the false positives, for free, in a pipeline that
+   already runs a two-voice KEEP/DROP triage over its finder's output. That is a
+   different question from the one "dead" answered, and it is **untested in the
+   shape arbiter would actually use** — finder feeding triage, not standalone
+   reviewer. It is still a ~40% recall loss on a tool whose job is catching
+   things. **Conclave is not recommending the swap; it is withdrawing the claim
+   that the option is closed.**
+
+   The load-bearing part is still *why*, and it still is not "small model bad".
+   **Task shape, not model tier, is what breaks** — but the review gap is ~1.65×,
+   not ~7×. ⚠️ Counterweight: on conclave's *edit-and-apply* harness the same
+   `muse-glimmer` build faked a dropped subtask in 1 of 3 reps, so conclave kept
+   qwen as its own daily driver (`docs/LOCAL-CODER-FAILURES.md`, 2026-08-14).
+   Good at finding; less trustworthy at doing. For arbiter that asymmetry happens
+   to point the right way — finding is the workload.
+
+   Consequence for the D3 seam, REVISED 2026-08-14: `ANTHROPIC_BASE_URL` →
+   conclave's gateway works mechanically, and whether it *buys* anything at the
+   `local-mid` tier is now an open question rather than a settled no. Caching,
+   `--path` scoping and `--no-verify` remain the levers that are known to work.
+   Conclave's model-axis re-run still finds a MODEL-diverse union does not pay —
+   **28 → 29 matched findings for 30 → 61 false positives**, one match in 55 and
+   inside the draw spread — so a *fleet* of finders remains neither a cost nor a
+   quality play. That arm now uses a **near-peer** second model (~1.65× behind,
+   5-of-8 criticals unaided), so unlike the 2026-08-07 version it is no longer
+   true-by-construction; peer-strength *frontier-vs-frontier* is still unmeasured.
+   Evidence: `../conclave/docs/LOCAL-CODER-FAILURES.md`,
+   `../conclave/docs/S2-scoping.md` § 2026-08-14,
+   `../conclave/orchestrator/s2_model_axis_result.json`.
 
    Related trap, avoided on purpose: `usage()` used to sum `input_tokens`, which
    is the **uncached remainder**, not the prompt. Had the meter not been fixed

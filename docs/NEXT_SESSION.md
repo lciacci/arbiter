@@ -73,10 +73,17 @@ default and costs roughly 3× a bare run.
    1024-token minimum, and a marker that caches nothing reads as done. Still
    unmeasured: **the same scope with `--no-verify`**, and whether
    `--path`-scoped runs land near $0.10.
-   **Do not spend a session on a cheaper finder model — conclave measured it and
+   ~~**Do not spend a session on a cheaper finder model — conclave measured it and
    it is dead:** a local 30B scores 0.073 recall / 0-of-8 criticals on *this
-   project's own corpus* against claude's 0.509, while matching a hosted 80B on
-   edit-and-apply. Task shape, not model tier. Full account in `STATE.md` item 2.
+   project's own corpus* against claude's 0.509.~~
+   **🔴 RE-OPENED 2026-08-14 — conclave retracted that.** 0.073 was one model at a
+   starved token budget. On *this project's own corpus*: `muse-glimmer:30b` scores
+   **0.309 recall / 5-of-8 criticals with 15 false positives**, against claude's
+   0.509 / 6-of-8 / **30**. Free, local. Half the false positives at ~60% of the
+   recall, feeding a triage stage that already exists — **not dead, just untested
+   in the shape arbiter would use it.** Still a real recall loss; still arbiter's
+   call. Task shape, not model tier, survives — the gap is ~1.65×, not ~7×.
+   Full account in `STATE.md` item 2 and conclave `docs/S2-scoping.md`.
 
 **Demoted, deliberately: wiring it as a git hook.** It was step 2 and it was the
 wrong target. Reasons are in full in `STATE.md` under "What has never been run",

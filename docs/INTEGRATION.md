@@ -67,10 +67,23 @@ forward-looking form is: **don't add a fleet later.**
 > **+0.000 recall and +20 false positives, with zero decorrelated catches.** The scorer reproduces
 > pr-arbiter's committed numbers to 4dp on their matcher and their expected findings.
 >
-> **BOUND — do not over-read it.** The second arm was a ~7× *weaker* model (qwen 30B alone: 0.073
+> ~~**BOUND — do not over-read it.** The second arm was a ~7× *weaker* model (qwen 30B alone: 0.073
 > recall, 0/8 criticals). A weak model's findings are a near-subset, so it *cannot* add union-recall;
-> the result is close to true by construction. **Directionally supportive, not settling.** The open
-> measurable was **peer-strength**: does a second *frontier* reviewer decorrelate?
+> the result is close to true by construction.~~
+>
+> **🔴 BOUND RETRACTED 2026-08-14 by conclave — guard (b)'s conclusion is UNCHANGED and now rests on
+> better evidence.** Two corrections. The 0.073 arm ran at a starved 4096-token budget; at a matched
+> 16384 the same model scores **0.127**. And the probe was re-run with a *near-peer* second model,
+> `muse-glimmer:30b` (Meta, Apache 2.0, Aug 2026), which scores **0.309 recall / 5-of-8 criticals**
+> alone — ~1.65× behind claude, not ~7×. **The "a weak model's findings are a near-subset, so it
+> cannot add recall by construction" escape hatch is gone.**
+>
+> **The MODEL-diverse union still did not pay:** matched findings 28 → **29**, false positives
+> 30 → **61**. One match in 55 is inside the draw spread arbiter itself measured. So the model-axis
+> null is no longer true-by-construction — it is a near-peer arm that genuinely failed to
+> decorrelate, which is a stronger result than the one it replaces.
+> **Still open, and still costs money: peer-strength *frontier-vs-frontier*.**
+> Source: conclave `docs/S2-scoping.md` § 2026-08-14 and `orchestrator/s2_model_axis_result.json`.
 >
 > ## ⚠ MEASURED 2026-08-07 — peer-strength decorrelates, and the confound is gone
 >
@@ -158,11 +171,37 @@ portable*, explicitly not "better than `/code-review`".
 - **S1 — inference gateway.** arbiter is deliberately **not** Claude-Code-bound: plain Python
   against the Anthropic SDK with a bare client, so `ANTHROPIC_BASE_URL` points it at conclave's
   gateway **with no code change**.
-  > **Bound, and it is the reason not to spend a session on a cheaper finder model.** Mechanically
+  > ~~**Bound, and it is the reason not to spend a session on a cheaper finder model.** Mechanically
   > true ≠ usefully served. Conclave's local 30B scores **0.073 recall / 0-of-8 criticals** on
   > structured adversarial review — measured on *this project's own corpus* — against claude's 0.509,
-  > while **matching** a hosted 80B on edit-and-apply. **Task SHAPE, not model tier, is the
-  > escalation trigger, and review is the shape that breaks the local tier.**
+  > while **matching** a hosted 80B on edit-and-apply.~~
+  >
+  > **🔴 RETRACTED 2026-08-14 by conclave. This one CHANGES arbiter's answer, not just its number —
+  > the cheaper-finder question is re-opened, not settled.** The 0.073 figure was one model
+  > (`qwen3-coder:30b`) at a starved 4096-token budget, quoted as a property of the whole local
+  > tier. Re-measured on *this project's own corpus*, same prompt, same matcher:
+  >
+  > | reviewer | recall | criticals | false positives | cost |
+  > |---|---|---|---|---|
+  > | claude-sonnet | 0.509 | 6/8 | 30 | ~$0.79/file |
+  > | **`muse-glimmer:30b`** (local) | **0.309** | **5/8** | **15** | **$0** |
+  > | `qwen3-coder:30b` (local, matched budget) | 0.127 | 1/8 | 13 | $0 |
+  >
+  > **Note the false-positive column** — the local model finds ~60% of the true findings with *half*
+  > the false positives. For a tool whose stated main friction is per-file cost, and which already
+  > runs a two-voice KEEP/DROP triage over its finder's output, "a free finder at 0.6 recall and 0.5
+  > FP feeding the existing triage" is a different proposition from the one this bound rejected.
+  >
+  > **Conclave is NOT recommending the swap** — that is arbiter's design call, on arbiter's cost
+  > model, and 0.309 is still a ~40% recall loss on a tool that exists to catch things. What conclave
+  > is retracting is the claim that the option is *dead*. It is not; it is untested at the shape
+  > arbiter would actually use it (finder feeding triage, not standalone reviewer).
+  >
+  > **Task SHAPE still beats model tier as the escalation trigger — but the review gap is ~1.65×,
+  > not ~7×.** ⚠️ Counterweight worth knowing before betting on this model: on conclave's
+  > *edit-and-apply* harness the same `muse-glimmer` build confabulated a dropped subtask in 1 of 3
+  > reps (conclave `docs/LOCAL-CODER-FAILURES.md`, 2026-08-14), so conclave kept qwen as its own
+  > driver. Good at finding, less trustworthy at doing.
   > (`../conclave/docs/LOCAL-CODER-FAILURES.md`.)
 - **S4 — review pattern → `/arbiter`.** arbiter owns the engine; **Tessera owns the `/arbiter`
   surface and the when-to-invoke.** The pattern graduated 2026-07-28. Still ADR-gated on **D3**,
